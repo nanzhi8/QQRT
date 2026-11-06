@@ -21,22 +21,25 @@
       </list-item>
     </list>
 
-    <list class="result" if="{{rows.length && !busy}}" style="height:{{listH}}px">
-      <list-item type="r" class="rrow" for="{{rows}}">
-        <text class="rk">{{$item.k}}</text>
-        <text class="rv">{{$item.v}}</text>
-      </list-item>
-      <list-item type="back" class="cell" @click="backToMenu">
-        <text class="cell-t">‹ 返回菜单</text>
+    <div class="backbar" if="{{rows.length && !busy}}" @click="backToMenu">
+      <text class="backbar-t">‹ 返回菜单　（点行填参数，长按复制值）</text>
+    </div>
+
+    <list class="result" if="{{rows.length && !busy}}" style="height:{{rows.length ? listH - 40 : listH}}px">
+      <list-item type="r" class="rrow" for="{{rows}}" @click="tapRow($item)" @longpress="useAsArg($item)">
+        <text class="rk">{{$item.k || '—'}}</text>
+        <text class="rv">{{$item.v || '—'}}</text>
       </list-item>
     </list>
   </div>
 </template>
 
 <script>
-import { loadAuth, hasAuth, post, go, back, replace, toast } from '../common/api.js'
+import { loadAuth, hasAuth, get, post, go, back, replace, toast } from '../common/api.js'
 
 const MENU = [
+  { label: '本群 ID（openid）', desc: '本地解析，无需联网', action: 'local_gid' },
+  { label: '选择成员取 openid', desc: '点一个人自动填入参数', action: 'pick_member' },
   { label: '群资料', desc: '群名 / 简介 / 人数', action: 'info' },
   { label: '机器人群内状态', desc: '角色 / 接收消息设置', action: 'bot_state' },
   { label: '群成员列表', desc: '含角色、入群时间', action: 'members' },
@@ -130,7 +133,8 @@ export default {
     busy: false,
     argText: '',
     argLabel: '',
-    pending: null
+    pending: null,
+    picking: false
   },
 
   onInit() {
@@ -185,8 +189,66 @@ export default {
     })
   },
 
+
+  localGid() {
+    const cid = String(this.cid || '')
+    const i = cid.indexOf(':')
+    const gid = i > 0 ? cid.slice(i + 1) : cid
+    this.rows = [
+      { k: '会话 ID', v: cid },
+      { k: '群 openid', v: gid },
+      { k: '提示', v: '长按任意一行，值会填进「参数」' },
+      { k: '机器人 ID', v: '点「机器人群内状态」可看 member_openid' }
+    ]
+  },
+
+  pickMember() {
+    if (this.busy) return
+    this.busy = true
+    get('/api/watch/members', { conversationId: this.cid }, (err, obj) => {
+      this.busy = false
+      if (err) {
+        toast(err.msg || '读取成员失败')
+        this.rows = [{ k: '错误', v: String(err.msg || '读取失败') }]
+        return
+      }
+      const list = (obj && obj.members) || []
+      if (!list.length) {
+        this.rows = [{ k: '提示', v: '暂无成员，先在群里发一条消息再试' }]
+        return
+      }
+      const out = []
+      for (let i = 0; i < list.length; i++) {
+        const m = list[i] || {}
+        const oid = String(m.openid || m.memberOpenid || '')
+        if (!oid) continue
+        out.push({ k: String(m.name || '成员').slice(0, 8), v: oid, clickable: true })
+      }
+      this.picking = true
+      this.rows = out.length ? out : [{ k: '提示', v: '成员数据里没有 openid' }]
+    })
+  },
+
+  tapRow(item) {
+    if (!item || !item.clickable) return
+    this.useAsArg(item)
+  },
+
+  useAsArg(item) {
+    if (!item) return
+    const v = String(item.v || item.k || '').trim()
+    if (!v || v === '—') return
+    this.argText = v
+    this.argLabel = '参数'
+    this.picking = false
+    this.rows = []
+    toast('已填入参数：' + v.slice(0, 12))
+  },
+
   exec(m) {
     if (!m) return
+    if (m.action === 'local_gid') { this.localGid(); return }
+    if (m.action === 'pick_member') { this.pickMember(); return }
     if (m.arg && !this.argText) {
       this.pending = m
       this.argLabel = m.arg
@@ -224,6 +286,7 @@ export default {
       if (err) {
         if (err.code === 'AUTH') { replace('Login'); return }
         toast(err.msg || '请求失败')
+        this.rows = [{ k: '错误', v: String(err.msg || '请求失败').slice(0, 40) }]
         return
       }
       this.rows = (obj && obj.rows) || [{ k: '结果', v: '成功' }]
@@ -235,6 +298,7 @@ export default {
 
   backToMenu() {
     this.rows = []
+    this.picking = false
     this.argText = ''
   },
 
@@ -259,7 +323,9 @@ export default {
 .cell { width: 336px; height: 60px; flex-direction: column; justify-content: center; padding-left: 14px; padding-right: 14px; border-bottom-width: 1px; border-bottom-color: #222222; }
 .cell-t { font-size: 18px; color: #e8e8e8; }
 .cell-s { font-size: 13px; color: #7a8797; }
-.rrow { width: 336px; min-height: 42px; flex-direction: row; align-items: center; padding-left: 12px; padding-right: 12px; border-bottom-width: 1px; border-bottom-color: #1c1c1c; }
+.backbar { width: 336px; height: 40px; flex-direction: row; align-items: center; padding-left: 14px; background-color: #14202c; }
+.backbar-t { font-size: 14px; color: #7fb2e5; }
+.rrow { width: 336px; height: 46px; flex-direction: row; align-items: center; padding-left: 12px; padding-right: 12px; border-bottom-width: 1px; border-bottom-color: #1c1c1c; }
 .rk { width: 130px; font-size: 13px; color: #8fa3bd; lines: 1; text-overflow: ellipsis; }
-.rv { flex-grow: 1; font-size: 13px; color: #d8e2ee; lines: 1; text-overflow: ellipsis; }
+.rv { flex-grow: 1; font-size: 13px; color: #d8e2ee; lines: 2; text-overflow: ellipsis; }
 </style>
