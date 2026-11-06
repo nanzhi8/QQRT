@@ -289,20 +289,6 @@ el('toAccounts').onclick = function(ev){
   location.href = '/adduser' + (SC ? '?sharecode=' + encodeURIComponent(SC) : '');
 };
 
-el('doSetup').onclick = async function(){
-  bad(''); ok('');
-  var p = el('sp').value, p2 = el('sp2').value;
-  if (!p || p.length < 6) { bad('密码至少 6 位'); return; }
-  if (p !== p2) { bad('两次输入的密码不一致'); return; }
-  el('doSetup').disabled = true;
-  try {
-    var r = await api('/api/admin/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: p }) });
-    if (r.token) setToken(r.token);
-    ok('管理员已创建，正在进入控制台…');
-    setTimeout(function(){ location.href = backUrl(); }, 900);
-  } catch (e) { bad(e.message); } finally { el('doSetup').disabled = false; }
-};
-
 boot();
 `;
 
@@ -322,6 +308,9 @@ export function accountsHtml(): string {
   </div>
   <a href="#" id="back" style="font-size:13px;color:#8aa39d">返回</a>
 </div>
+
+<div class="err" id="err"></div>
+<div class="ok" id="ok"></div>
 
 <div class="card" id="setupCard" style="display:none">
   <h3>首次使用：初始化管理员</h3>
@@ -380,10 +369,7 @@ export function accountsHtml(): string {
   <label style="margin-top:10px">新密码</label>
   <input id="rpass" type="password" placeholder="6-64 位">
   <button class="btn" id="doReset">重置密码</button>
-</div>
-
-<div class="err" id="err"></div>
-<div class="ok" id="ok"></div>`;
+</div>`;
 
   const script = `
 var isAdmin = false;
@@ -518,6 +504,25 @@ el('doReset').onclick = async function(){
     await api('/api/admin/users/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, newPassword: p }) });
     ok('已重置 ' + u + ' 的密码'); el('ruser').value = ''; el('rpass').value = '';
   } catch (e) { bad(e.message); } finally { el('doReset').disabled = false; }
+};
+
+el('doSetup').onclick = async function(){
+  bad(''); ok('');
+  var p = el('sp').value, p2 = el('sp2').value;
+  if (!p || p.length < 6) { bad('密码至少 6 位'); return; }
+  if (p !== p2) { bad('两次输入的密码不一致'); return; }
+  el('doSetup').disabled = true;
+  el('doSetup').textContent = '正在创建…';
+  try {
+    var r = await api('/api/admin/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: p }) });
+    if (r.token) setToken(r.token);
+    ok('管理员已创建，正在进入控制台…');
+    setTimeout(function(){ location.href = backUrl(); }, 900);
+  } catch (e) {
+    bad(e.message);
+    el('doSetup').textContent = '初始化管理员';
+    el('doSetup').disabled = false;
+  }
 };
 
 boot();
