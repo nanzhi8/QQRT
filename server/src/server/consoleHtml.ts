@@ -109,6 +109,7 @@ export function consoleHtml(): string {
   <label style="margin-top:10px">密码</label>
   <input id="p" type="password" autocomplete="current-password">
   <button class="btn" id="doLogin">登录</button>
+  <div class="small" style="margin-top:10px">没有账号？<a href="#" id="toSignup">自助注册 ›</a></div>
   <div class="err" id="err"></div>
   <div class="ok" id="ok"></div>
 </div>
@@ -268,6 +269,10 @@ el('doToggle').onclick = async function(){
 };
 
 // 分享码直接取自当前地址栏，手表输入这串即可
+(function initSignupLink(){
+  var a = el('toSignup');
+  if (a) a.href = '/adduser' + (SC ? '?sharecode=' + encodeURIComponent(SC) : '');
+})();
 (function initShare(){
   el('shareCode').textContent = SC || '(地址缺少 sharecode)';
   el('shareHost').textContent = SC ? ('完整链接：' + location.origin + '/?sharecode=' + SC) : '';
@@ -284,6 +289,20 @@ el('toAccounts').onclick = function(ev){
   location.href = '/adduser' + (SC ? '?sharecode=' + encodeURIComponent(SC) : '');
 };
 
+el('doSetup').onclick = async function(){
+  bad(''); ok('');
+  var p = el('sp').value, p2 = el('sp2').value;
+  if (!p || p.length < 6) { bad('密码至少 6 位'); return; }
+  if (p !== p2) { bad('两次输入的密码不一致'); return; }
+  el('doSetup').disabled = true;
+  try {
+    var r = await api('/api/admin/setup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: p }) });
+    if (r.token) setToken(r.token);
+    ok('管理员已创建，正在进入控制台…');
+    setTimeout(function(){ location.href = backUrl(); }, 900);
+  } catch (e) { bad(e.message); } finally { el('doSetup').disabled = false; }
+};
+
 boot();
 `;
 
@@ -298,32 +317,91 @@ export function accountsHtml(): string {
     <div class="logo">Q</div>
     <div>
       <div class="t1">账号管理</div>
-      <div class="t2">管理员注册新的控制台账号</div>
+      <div class="t2">自助注册 / 改密码 / 查看机器人绑定</div>
     </div>
   </div>
   <a href="#" id="back" style="font-size:13px;color:#8aa39d">返回</a>
 </div>
 
-<div class="card">
-  <h3>新增账号</h3>
+<div class="card" id="setupCard" style="display:none">
+  <h3>首次使用：初始化管理员</h3>
+  <div class="small" style="margin-top:0">设置管理员密码后即可绑定机器人。请牢记，忘记只能清空数据目录重来。</div>
+  <label style="margin-top:10px">管理员密码</label>
+  <input id="sp" type="password" placeholder="至少 6 位">
+  <label style="margin-top:10px">确认密码</label>
+  <input id="sp2" type="password" placeholder="再输一次">
+  <button class="btn" id="doSetup">初始化管理员</button>
+</div>
+
+<div class="card" id="regCard">
+  <h3>自助注册</h3>
+  <div class="small" style="margin-top:0">创建自己的账号，登录后绑定自己的 QQ 机器人，消息与会话按账号隔离。</div>
+  <label style="margin-top:10px">用户名</label>
+  <input id="ru" placeholder="2-20 位中文、字母、数字或下划线">
+  <label style="margin-top:10px">密码</label>
+  <input id="rp" type="password" placeholder="6-64 位">
+  <button class="btn" id="doReg">注册并登录</button>
+  <div class="small" id="regHint" style="margin-top:8px"></div>
+</div>
+
+<div class="card" id="pwdCard" style="display:none">
+  <h3>修改我的密码</h3>
+  <label>旧密码</label>
+  <input id="po" type="password">
+  <label style="margin-top:10px">新密码</label>
+  <input id="pn" type="password" placeholder="6-64 位">
+  <button class="btn" id="doPwd">修改密码</button>
+</div>
+
+<div class="card" id="addCard" style="display:none">
+  <h3>新增账号（管理员）</h3>
   <label>新用户账号</label>
   <input id="nu" placeholder="2-20 位中文、字母、数字或下划线">
   <label style="margin-top:10px">新用户密码</label>
   <input id="np" type="password" placeholder="6-64 位">
   <button class="btn" id="doAdd">添加用户</button>
-  <div class="err" id="err"></div>
-  <div class="ok" id="ok"></div>
 </div>
 
-<div class="card">
+<div class="card" id="switchCard" style="display:none">
+  <h3>自助注册开关</h3>
+  <div class="kv"><span id="sgText">—</span><button class="btn2" id="doToggleSignup" style="width:88px;height:36px">切换</button></div>
+  <div class="small">关闭后只能由管理员在下面手动添加账号。</div>
+</div>
+
+<div class="card" id="listCard" style="display:none">
   <h3>内部用户</h3>
   <div id="list" class="list"><div class="small">加载中…</div></div>
-</div>`;
+</div>
+
+<div class="card" id="resetCard" style="display:none">
+  <h3>重置用户密码（管理员）</h3>
+  <label>用户名</label>
+  <input id="ruser" placeholder="要重置的账号">
+  <label style="margin-top:10px">新密码</label>
+  <input id="rpass" type="password" placeholder="6-64 位">
+  <button class="btn" id="doReset">重置密码</button>
+</div>
+
+<div class="err" id="err"></div>
+<div class="ok" id="ok"></div>`;
 
   const script = `
-function backUrl(){ return '/' + (SC ? '?sharecode=' + encodeURIComponent(SC) : ''); }
+var isAdmin = false;
 
+function backUrl(){ return '/' + (SC ? '?sharecode=' + encodeURIComponent(SC) : ''); }
 el('back').onclick = function(ev){ ev.preventDefault(); location.href = backUrl(); };
+function ok(m){ el('ok').textContent = m || ''; el('err').textContent = ''; }
+function bad(m){ el('err').textContent = m || ''; el('ok').textContent = ''; }
+
+async function loadSignupSwitch(){
+  try {
+    var s = await api('/api/auth/signup', { cache: 'no-store' });
+    var on = s.enabled !== false;
+    el('regCard').style.display = on ? '' : 'none';
+    el('sgText').textContent = on ? '当前：开启' : '当前：关闭';
+    el('doToggleSignup').setAttribute('data-on', on ? '1' : '0');
+  } catch (e) { /* 忽略 */ }
+}
 
 async function load(){
   try {
@@ -331,7 +409,12 @@ async function load(){
     var users = r.users || [];
     if (!users.length) { el('list').innerHTML = '<div class="small">暂无内部用户</div>'; return; }
     el('list').innerHTML = users.map(function(u){
-      return '<div class="item"><div><div>' + esc(u.username) + '</div><div class="small" style="margin:0">' + esc(new Date(u.createdAt).toLocaleString()) + '</div></div>' +
+      var badge = u.hasBot
+        ? '<div class="small" style="margin:0;color:#4ade80">已绑定 ' + esc(u.botName || u.appId || '机器人') + ' · ' + (u.connected ? '在线' : '离线') + '</div>'
+        : '<div class="small" style="margin:0">未绑定机器人</div>';
+      return '<div class="item"><div><div>' + esc(u.username) + '</div>' +
+        '<div class="small" style="margin:0">' + esc(new Date(u.createdAt).toLocaleString()) + '</div>' +
+        badge + '</div>' +
         '<button class="del" data-id="' + esc(u.id) + '">删除</button></div>';
     }).join('');
     Array.prototype.forEach.call(document.querySelectorAll('.del'), function(b){
@@ -339,34 +422,105 @@ async function load(){
     });
   } catch (e) {
     el('list').innerHTML = '<div class="err">' + esc(e.message) + '</div>';
-    if (/登录/.test(e.message)) { location.href = backUrl(); }
   }
 }
 
 async function del(id){
   if (!confirm('删除这个用户？')) return;
-  try { await api('/api/admin/users/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) }); await load(); }
-  catch (e) { el('err').textContent = e.message; }
+  try {
+    await api('/api/admin/users/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) });
+    await load();
+  } catch (e) { bad(e.message); }
 }
 
+async function boot(){
+  var initialized = true;
+  try {
+    var st = await api('/api/admin/status', { cache: 'no-store' });
+    initialized = !!st.initialized;
+  } catch (e) { /* 忽略，按已初始化处理 */ }
+  if (!initialized) {
+    el('setupCard').style.display = '';
+    el('regCard').style.display = 'none';
+    el('pwdCard').style.display = 'none';
+    return;
+  }
+  await loadSignupSwitch();
+  if (token()) { el('pwdCard').style.display = ''; }
+  try {
+    await api('/api/admin/users', { cache: 'no-store' });
+    isAdmin = true;
+  } catch (e) { isAdmin = false; }
+  if (isAdmin) {
+    el('addCard').style.display = '';
+    el('switchCard').style.display = '';
+    el('listCard').style.display = '';
+    el('resetCard').style.display = '';
+    await load();
+  }
+}
+
+el('doReg').onclick = async function(){
+  bad(''); ok('');
+  var u = el('ru').value.trim(), p = el('rp').value;
+  if (!u || !p) { bad('请填写用户名和密码'); return; }
+  el('doReg').disabled = true;
+  try {
+    var r = await api('/api/auth/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p }) });
+    if (r.token) setToken(r.token);
+    ok('注册成功，已自动登录。返回首页即可绑定你的机器人。');
+    el('ru').value = ''; el('rp').value = '';
+    el('pwdCard').style.display = '';
+    await boot();
+  } catch (e) { bad(e.message); } finally { el('doReg').disabled = false; }
+};
+
+el('doPwd').onclick = async function(){
+  bad(''); ok('');
+  var o = el('po').value, n = el('pn').value;
+  if (!o || !n) { bad('请填写旧密码和新密码'); return; }
+  el('doPwd').disabled = true;
+  try {
+    await api('/api/auth/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ oldPassword: o, newPassword: n }) });
+    ok('密码已修改'); el('po').value = ''; el('pn').value = '';
+  } catch (e) { bad(e.message); } finally { el('doPwd').disabled = false; }
+};
+
+el('doToggleSignup').onclick = async function(){
+  bad(''); ok('');
+  var on = el('doToggleSignup').getAttribute('data-on') === '1';
+  try {
+    await api('/api/admin/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !on }) });
+    ok(on ? '已关闭自助注册' : '已开启自助注册');
+    await loadSignupSwitch();
+  } catch (e) { bad(e.message); }
+};
+
 el('doAdd').onclick = async function(){
-  el('err').textContent = ''; el('ok').textContent = '';
+  bad(''); ok('');
   var u = el('nu').value.trim(), p = el('np').value;
-  if (!u || !p) { el('err').textContent = '请填写账号和密码'; return; }
+  if (!u || !p) { bad('请填写账号和密码'); return; }
   el('doAdd').disabled = true;
   try {
     var r = await api('/api/admin/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, password: p }) });
-    el('ok').textContent = '已添加：' + ((r.user && r.user.username) || u);
+    ok('已添加：' + ((r.user && r.user.username) || u));
     el('nu').value = ''; el('np').value = '';
     await load();
-  } catch (e) {
-    el('err').textContent = e.message;
-  } finally {
-    el('doAdd').disabled = false;
-  }
+  } catch (e) { bad(e.message); } finally { el('doAdd').disabled = false; }
 };
 
-load();
+el('doReset').onclick = async function(){
+  bad(''); ok('');
+  var u = el('ruser').value.trim(), p = el('rpass').value;
+  if (!u || !p) { bad('请填写用户名和新密码'); return; }
+  el('doReset').disabled = true;
+  try {
+    await api('/api/admin/users/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: u, newPassword: p }) });
+    ok('已重置 ' + u + ' 的密码'); el('ruser').value = ''; el('rpass').value = '';
+  } catch (e) { bad(e.message); } finally { el('doReset').disabled = false; }
+};
+
+boot();
 `;
 
   return page("账号管理", body, script);
