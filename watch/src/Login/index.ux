@@ -1,0 +1,238 @@
+<template>
+  <div class="page">
+    <div class="hero">
+      <div class="logo"><text class="logo-t">Q</text></div>
+      <text class="title">QQRT</text>
+      <text class="sub">手环 / 红米手表 · Vela 版</text>
+    </div>
+
+    <div class="form">
+      <div class="field" @click="editField('host')">
+        <text class="flabel">服务器</text>
+        <text class="fvalue" if="{{host}}">{{hostDisp}}</text>
+        <text class="fvalue-ph" else>点此填写地址 / 短码</text>
+      </div>
+      <div class="field" @click="editField('account')">
+        <text class="flabel">账号</text>
+        <text class="fvalue" if="{{account}}">{{account}}</text>
+        <text class="fvalue-ph" else>点此填写网站账号</text>
+      </div>
+      <div class="field" @click="editField('password')">
+        <text class="flabel">密码</text>
+        <text class="fvalue" if="{{password}}">••••••</text>
+        <text class="fvalue-ph" else>点此填写密码</text>
+      </div>
+    </div>
+
+    <div class="btn" @click="doLogin">
+      <text class="btn-t">{{busy ? '登录中…' : '登 录'}}</text>
+    </div>
+
+    <text class="err" if="{{error}}">{{error}}</text>
+    <text class="tip">服务器地址可只填分享码（如 TFK3NX7DXP）</text>
+    <text class="tip">使用服务器网站内部账号登录</text>
+  </div>
+</template>
+
+<script>
+import {
+  loadAuth, saveHost, saveLogin, post, toast, replace, go,
+  sget, normHost, isShortCode, resolveShortCode, getHost, DEFAULT_HOST
+} from '../common/api.js'
+
+export default {
+  private: {
+    host: '',
+    account: '',
+    password: '',
+    busy: false,
+    error: '',
+    imeField: ''
+  },
+
+  onInit() {
+    loadAuth(() => {
+      this.host = getHost() || DEFAULT_HOST
+      sget('qq_acct', (a) => { this.account = a || '' })
+    })
+  },
+
+  onShow() {
+    const r = typeof global !== 'undefined' ? global.__imeResult : null
+    if (!r) return
+    global.__imeResult = null
+    if (!r.confirmed) return
+    const f = this.imeField
+    const v = String(r.text || '').trim()
+    if (f === 'host') {
+      if (!v) { this.host = ''; return }
+      if (isShortCode(v)) {
+        this.error = '正在解析短码…'
+        resolveShortCode(v, (err, url) => {
+          if (err) { this.error = err.message; return }
+          this.host = normHost(url)
+          this.error = ''
+          toast('已解析：' + this.host)
+        })
+        return
+      }
+      this.host = normHost(v)
+      this.error = ''
+    } else if (f === 'account') {
+      this.account = v
+    } else if (f === 'password') {
+      this.password = String(r.text || '')
+    }
+  },
+
+  hostDisp() {
+    return String(this.host || '').replace(/^https?:\/\//, '')
+  },
+
+  editField(f) {
+    if (this.busy) return
+    this.imeField = f
+    var cur = f === 'host' ? (this.host || '') : (f === 'account' ? (this.account || '') : (this.password || ''))
+    var label = f === 'host' ? '服务器地址' : (f === 'account' ? '网站账号' : '密码')
+    if (typeof global !== 'undefined') {
+      global.__imeText = cur
+      global.__imeLabel = label
+      global.__imeResult = null
+    }
+    go('Ime')
+  },
+
+  doLogin() {
+    if (this.busy) return
+    const host = normHost(this.host)
+    const user = String(this.account || '').trim()
+    const pass = String(this.password || '')
+    if (!host) { this.error = '请先填写服务器地址'; return }
+    if (!user || !pass) { this.error = '请填写账号和密码'; return }
+    this.busy = true
+    this.error = ''
+    saveHost(host, (e) => {
+      if (e) { this.busy = false; this.error = e.message; return }
+      post('/api/watch/login', { username: user, password: pass }, (err, obj) => {
+        this.busy = false
+        if (err) {
+          this.error = err.code === 'AUTH' ? '账号或密码错误' : err.msg
+          return
+        }
+        if (!obj || !obj.token) { this.error = '服务器未返回登录令牌'; return }
+        saveLogin(obj.token, user)
+        replace('Home')
+      })
+    })
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 336px;
+  height: 480px;
+  background-color: #000000;
+  flex-direction: column;
+  align-items: center;
+}
+.hero {
+  width: 336px;
+  height: 158px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  padding-bottom: 14px;
+}
+.logo {
+  width: 62px;
+  height: 62px;
+  border-radius: 20px;
+  background-color: #3184d0;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+.logo-t {
+  font-size: 36px;
+  color: #ffffff;
+  font-weight: bold;
+}
+.title {
+  font-size: 34px;
+  color: #ffffff;
+  font-weight: bold;
+  height: 40px;
+}
+.sub {
+  font-size: 19px;
+  color: #aaaaaa;
+  height: 24px;
+}
+.form {
+  width: 300px;
+  flex-direction: column;
+  margin-top: 6px;
+}
+.field {
+  width: 300px;
+  height: 62px;
+  background-color: #262626;
+  border-radius: 100px;
+  border-width: 2px;
+  border-color: rgba(255, 255, 255, 0.06);
+  flex-direction: row;
+  align-items: center;
+  padding-left: 20px;
+  padding-right: 20px;
+  margin-bottom: 10px;
+}
+.flabel {
+  width: 74px;
+  font-size: 20px;
+  color: #aaaaaa;
+}
+.fvalue {
+  flex-grow: 1;
+  font-size: 22px;
+  color: #ffffff;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.fvalue-ph {
+  flex-grow: 1;
+  font-size: 22px;
+  color: #888888;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.btn {
+  width: 300px;
+  height: 62px;
+  margin-top: 8px;
+  border-radius: 100px;
+  background-color: #3184d0;
+  align-items: center;
+  justify-content: center;
+}
+.btn-t {
+  font-size: 25px;
+  color: #ffffff;
+  font-weight: bold;
+}
+.err {
+  width: 300px;
+  font-size: 19px;
+  color: #ff6b6b;
+  text-align: center;
+  margin-top: 12px;
+  lines: 2;
+}
+.tip {
+  width: 300px;
+  font-size: 17px;
+  color: #888888;
+  text-align: center;
+  margin-top: 10px;
+}
+</style>

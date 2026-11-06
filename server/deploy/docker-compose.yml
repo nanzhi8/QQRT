@@ -1,0 +1,30 @@
+# QQRT 服务端一键部署（单容器，数据库是进程内 PGlite）
+#
+#   cd qqrt-server
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#
+# 不需要外部 PostgreSQL：PGlite 跑在应用进程里，数据在 /app/pgdata 卷。
+# 建表由容器启动时自动完成（AUTO_MIGRATE=1）。
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: qqrt-app
+    restart: unless-stopped
+    environment:
+      PORT: "3005"
+      PGLITE_DIR: /app/pgdata
+      NEXT_PUBLIC_BASE_PATH: ""
+      AUTO_MIGRATE: "1"
+      TZ: Asia/Shanghai
+    ports:
+      - "3005:3005"
+    volumes:
+      - pgdata:/app/pgdata
+      - appdata:/app/data
+
+volumes:
+  pgdata:
+  appdata:

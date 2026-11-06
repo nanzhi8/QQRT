@@ -1,0 +1,79 @@
+{
+  "package": "com.qqrt.band",
+  "name": "QQRT",
+  "versionName": "4.11.0",
+  "versionCode": 81,
+  "icon": "/common/icon.png",
+  "minAPILevel": 1,
+  "deviceTypeList": [
+    "watch"
+  ],
+  "features": [
+    {
+      "name": "system.fetch"
+    },
+    {
+      "name": "system.router"
+    },
+    {
+      "name": "system.prompt"
+    },
+    {
+      "name": "system.storage"
+    },
+    {
+      "name": "system.device"
+    },
+    {
+      "name": "system.vibrator"
+    }
+  ],
+  "config": {
+    "logLevel": "warn",
+    "designWidth": 336
+  },
+  "display": {
+    "backgroundColor": "#000000"
+  },
+  "router": {
+    "entry": "Login",
+    "pages": {
+      "Login": {
+        "component": "index",
+        "path": "/login"
+      },
+      "Home": {
+        "component": "index",
+        "path": "/home"
+      },
+      "Chat": {
+        "component": "index",
+        "path": "/chat"
+      },
+      "Settings": {
+        "component": "index",
+        "path": "/settings"
+      },
+      "Group": {
+        "component": "index",
+        "path": "/group"
+      },
+      "Members": {
+        "component": "index",
+        "path": "/members"
+      },
+      "Requests": {
+        "component": "index",
+        "path": "/requests"
+      },
+      "Ime": {
+        "component": "ime",
+        "path": "/ime"
+      },
+      "Viewer": {
+        "component": "index",
+        "path": "/viewer"
+      }
+    }
+  }
+}

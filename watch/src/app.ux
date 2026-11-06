@@ -1,0 +1,39 @@
+<script>
+import device from '@system.device'
+
+export default {
+  onCreate() {
+    // 默认按手环 9 Pro（336x480）布局，拿到设备信息后按屏幕比例修正。
+    // 红米手表 6 是 432x514，比例更矮，designWidth 336 时设计高度只有约 400。
+    global.screenShape = 'rect'
+    global.screenSize = { width: 336, height: 480 }
+    global.designH = 480
+    global.__imeText = ''
+    global.__imeLabel = ''
+    global.__imeResult = null
+
+    try {
+      device.getInfo({
+        success: function (info) {
+          var sw = Number(info && info.screenWidth) || 0
+          var sh = Number(info && info.screenHeight) || 0
+          if (sw > 0 && sh > 0) {
+            // 只用到宽高比：designWidth 固定 336，设计高度 = 336 * 屏高 / 屏宽
+            var h = Math.round((336 * sh) / sw)
+            if (h >= 240 && h <= 900) {
+              global.designH = h
+              global.screenSize = { width: 336, height: h }
+            }
+          }
+          if (info && info.screenShape) global.screenShape = info.screenShape
+          console.log('QQRT screen ' + sw + 'x' + sh + ' -> designH ' + global.designH)
+        },
+        fail: function () {}
+      })
+    } catch (e) {}
+
+    console.log('QQRT app created')
+  },
+  onDestroy() {}
+}
+</script>

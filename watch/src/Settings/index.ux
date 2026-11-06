@@ -1,0 +1,336 @@
+<template>
+  <div class="page" style="height:{{vh}}px">
+    <div class="main">
+      <div class="head">
+        <text class="h-back" @click="goBack">‹</text>
+        <text class="h-title">设置</text>
+        <text class="h-right">v4.11.0</text>
+      </div>
+
+      <div class="card">
+        <div class="row" @click="editHost">
+          <text class="label">服务器</text>
+          <text class="value">{{hostDisp}}</text>
+          <text class="arrow">›</text>
+        </div>
+        <div class="row">
+          <text class="label">账号</text>
+          <text class="value">{{account}}</text>
+        </div>
+        <div class="row">
+          <text class="label">机器人</text>
+          <text class="value">{{botText}}</text>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row" @click="openRequests">
+          <text class="label">好友 / 群请求</text>
+          <text class="value">{{pendingText}}</text>
+          <text class="arrow">›</text>
+        </div>
+        <div class="row" @click="refreshNames">
+          <text class="label">刷新会话名称</text>
+          <text class="value">{{nameText}}</text>
+        </div>
+        <div class="row" @click="clearCursor">
+          <text class="label">重置同步进度</text>
+          <text class="value">{{cursorText}}</text>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="row-danger" @click="logout">
+          <text class="label-danger">退出登录</text>
+        </div>
+      </div>
+
+      <text class="about">QQRT · 小米手环 9 Pro 适配版</text>
+      <text class="about2">文字聊天 / 引用回复 / @ 群成员 / 撤回</text>
+    </div>
+
+
+  </div>
+</template>
+
+<script>
+import {
+  loadAuth, hasAuth, get, post, replace, go, back, toast, saveHost,
+  sget, sset, normHost, getHost, getAccount, clearLogin, isShortCode, resolveShortCode
+} from '../common/api.js'
+
+export default {
+  private: {
+    vh: 480,
+    host: '',
+    hostDisp: '未设置',
+    account: '未登录',
+    botText: '—',
+    pendingText: '',
+    cursorText: ''
+  },
+
+  onInit() {
+    this.vh = (typeof global !== 'undefined' && global.designH) || 480
+    loadAuth(() => {
+      if (!hasAuth()) { replace('Login'); return }
+      this.host = getHost()
+      this.hostDisp = String(this.host || '').replace(/^https?:\/\//, '')
+      this.account = getAccount() || '已登录'
+      this.loadStatus()
+      this.loadPending()
+      sget('qq_sync_after', (v) => {
+        this.cursorText = v ? ('#' + v) : '未同步'
+      })
+    })
+  },
+
+  loadStatus() {
+    get('/api/watch/status', {}, (err, obj) => {
+      if (err) { this.botText = '获取失败'; return }
+      const bot = (obj && obj.bot) || {}
+      if (bot.connected === true) this.botText = '在线'
+      else if (bot.status === 'connecting') this.botText = '连接中'
+      else if (bot.hasCredentials) this.botText = '离线'
+      else this.botText = '未绑定'
+    })
+  },
+
+  loadPending() {
+    get('/api/watch/requests', {}, (err, obj) => {
+      if (err) return
+      const n = Number((obj && obj.pendingCount) || 0)
+      this.pendingText = n > 0 ? (n + ' 条待处理') : ''
+    })
+  },
+
+  onShow() {
+    const r = typeof global !== 'undefined' ? global.__imeResult : null
+    if (!r) return
+    global.__imeResult = null
+    if (!r.confirmed) return
+    const v = String(r.text || '').trim()
+    if (!v) return
+    if (isShortCode(v)) {
+      toast('正在解析短码…')
+      resolveShortCode(v, (err, url) => {
+        if (err) { toast(err.message); return }
+        this.applyHost(url)
+      })
+      return
+    }
+    this.applyHost(v)
+  },
+
+  editHost() {
+    if (typeof global !== 'undefined') global.__imeText = this.host || ''
+    if (typeof global !== 'undefined') {
+      global.__imeLabel = '服务器地址'
+      global.__imeResult = null
+    }
+    go('Ime')
+  },
+
+  applyHost(v) {
+    const h = normHost(v)
+    this.host = h
+    this.hostDisp = String(h || '').replace(/^https?:\/\//, '')
+    saveHost(h, () => {})
+    toast('已保存，需重新登录')
+  },
+
+  openRequests() {
+    go('Requests')
+  },
+
+  refreshNames() {
+    this.nameText = '刷新中…'
+    post('/api/watch/refresh-names', {}, (err, obj) => {
+      if (err) { this.nameText = '失败'; toast(err.msg || '刷新失败'); return }
+      const n = Number((obj && obj.updated) || 0)
+      this.nameText = n > 0 ? ('已更新 ' + n + ' 个') : '已是最新'
+      toast(n > 0 ? ('已更新 ' + n + ' 个会话名称') : '名称已是最新')
+    })
+  },
+
+  clearCursor() {
+    sset('qq_sync_after', '')
+    this.cursorText = '未同步'
+    toast('已重置')
+  },
+
+  logout() {
+    clearLogin()
+    replace('Login')
+  },
+
+  goBack() {
+    back()
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 336px;
+  height: 480px;
+  background-color: #000000;
+  position: relative;
+  flex-direction: column;
+}
+.main {
+  width: 336px;
+  flex-grow: 1;
+  flex-direction: column;
+}
+.head {
+  width: 336px;
+  height: 56px;
+  flex-direction: row;
+  align-items: center;
+  padding-left: 12px;
+  padding-right: 14px;
+  background-color: #000000;
+  border-bottom-width: 1px;
+  border-bottom-color: #333333;
+}
+.h-back {
+  width: 40px;
+  font-size: 32px;
+  color: #3184d0;
+}
+.h-title {
+  flex-grow: 1;
+  font-size: 23px;
+  color: #ffffff;
+  font-weight: bold;
+}
+.h-right {
+  width: 70px;
+  font-size: 16px;
+  color: #888888;
+  text-align: right;
+}
+.card {
+  width: 308px;
+  margin-left: 14px;
+  margin-right: 14px;
+  margin-top: 12px;
+  border-radius: 14px;
+  background-color: #262626;
+  border-width: 1px;
+  border-color: #333333;
+  flex-direction: column;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+.row {
+  width: 280px;
+  height: 62px;
+  flex-direction: row;
+  align-items: center;
+  border-bottom-width: 1px;
+  border-bottom-color: #221c14;
+}
+.label {
+  width: 130px;
+  font-size: 20px;
+  color: #ffffff;
+}
+.value {
+  flex-grow: 1;
+  font-size: 18px;
+  color: #aaaaaa;
+  text-align: right;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.arrow {
+  width: 20px;
+  font-size: 24px;
+  color: #888888;
+  text-align: right;
+}
+.row-danger {
+  width: 280px;
+  height: 62px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+.label-danger {
+  width: 280px;
+  font-size: 20px;
+  color: #ff6b5e;
+  text-align: center;
+}
+.about {
+  width: 308px;
+  margin-left: 14px;
+  margin-top: 18px;
+  font-size: 17px;
+  color: #888888;
+  text-align: center;
+}
+.about2 {
+  width: 308px;
+  margin-left: 14px;
+  margin-top: 6px;
+  font-size: 15px;
+  color: #666666;
+  text-align: center;
+}
+.edit-head {
+  width: 336px;
+  height: 56px;
+  flex-direction: row;
+  align-items: center;
+  padding-left: 14px;
+  padding-right: 14px;
+  background-color: #000000;
+  border-bottom-width: 1px;
+  border-bottom-color: #333333;
+}
+.eh-btn {
+  width: 70px;
+  font-size: 20px;
+  color: #aaaaaa;
+}
+.eh-ok {
+  text-align: right;
+  color: #3184d0;
+  font-weight: bold;
+}
+.eh-title {
+  flex-grow: 1;
+  font-size: 21px;
+  color: #ffffff;
+  text-align: center;
+}
+.edit-box {
+  width: 336px;
+  height: 96px;
+  padding-left: 16px;
+  padding-right: 16px;
+  padding-top: 12px;
+  padding-bottom: 8px;
+  background-color: #262626;
+  flex-direction: column;
+}
+.edit-text {
+  width: 304px;
+  font-size: 24px;
+  color: #ffffff;
+  lines: 2;
+  line-height: 30px;
+}
+.caret {
+  color: #3184d0;
+}
+.edit-hint {
+  width: 304px;
+  font-size: 16px;
+  color: #888888;
+  margin-top: 4px;
+}
+</style>

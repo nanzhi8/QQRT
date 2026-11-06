@@ -1,0 +1,159 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: system-ui, -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-display: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+
+  --color-paper: #f2f0e9;
+  --color-panel: #fbfaf6;
+  --color-card: #ffffff;
+  --color-ink: #1d2227;
+  --color-ink-soft: #616972;
+  --color-ink-faint: #99a0a8;
+  --color-line: #e2ddd0;
+  --color-line-soft: #ece8dd;
+
+  --color-brand: #0e7566;
+  --color-brand-deep: #0a5a4f;
+  --color-brand-bright: #12907d;
+  --color-brand-soft: #dfeeea;
+  --color-brand-wash: #f0f6f3;
+
+  --color-accent: #d98324;
+  --color-accent-soft: #f7ead7;
+  --color-danger: #c2452e;
+  --color-danger-soft: #f8e4de;
+
+  --color-night: #14181c;
+  --color-night-2: #1c2229;
+  --color-night-3: #262e37;
+  --color-night-line: #2e3740;
+  --color-night-text: #c9d2d8;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c9c3b4 transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #c9c3b4;
+  border-radius: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 聊天区背景：细微网点纹理，避免大面积死白 */
+.chat-bg {
+  background-color: var(--color-paper);
+  background-image: radial-gradient(#d8d2c2 0.8px, transparent 0.8px);
+  background-size: 18px 18px;
+}
+
+.safe-bottom-composer {
+  padding-bottom: constant(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: max(0.625rem, env(safe-area-inset-bottom));
+}
+
+.safe-top {
+  padding-top: constant(safe-area-inset-top);
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-top-fixed {
+  top: constant(safe-area-inset-top);
+  top: max(1rem, env(safe-area-inset-top));
+}
+
+.dark-scroll {
+  scrollbar-color: #3a444e transparent;
+}
+.dark-scroll::-webkit-scrollbar-thumb {
+  background: #3a444e;
+}
+
+@keyframes msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.msg-in {
+  animation: msg-in 0.18s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+.pop-in {
+  animation: pop-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+input[type="text"],
+input[type="password"],
+textarea {
+  outline: none;
+}

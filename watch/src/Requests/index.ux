@@ -1,0 +1,242 @@
+<template>
+  <div class="page" style="height:{{vh}}px">
+    <div class="head">
+      <text class="h-back" @click="goBack">‹</text>
+      <text class="h-title">好友 / 群请求</text>
+      <text class="h-right" @click="load">刷新</text>
+    </div>
+
+    <list class="list" style="height:{{listH}}px">
+      <list-item type="tip" class="tip" if="{{loading}}">
+        <text class="tip-t">加载中…</text>
+      </list-item>
+      <list-item type="tip" class="tip" if="{{!loading && empty}}">
+        <text class="tip-t">暂无待处理请求</text>
+      </list-item>
+      <list-item type="req" class="row" for="{{items}}" tid="id">
+        <div class="info">
+          <text class="title">{{$item.title}}</text>
+          <text class="desc">{{$item.desc}}</text>
+        </div>
+        <div class="ops" if="{{$item.pending}}">
+          <div class="op-ok" @click="decide($item, 'approve')">
+            <text class="op-t">同意</text>
+          </div>
+          <div class="op-no" @click="decide($item, 'reject')">
+            <text class="op-t">拒绝</text>
+          </div>
+        </div>
+        <text class="status" else>{{$item.statusText}}</text>
+      </list-item>
+    </list>
+  </div>
+</template>
+
+<script>
+import { loadAuth, hasAuth, get, post, replace, back, toast } from '../common/api.js'
+
+export default {
+  private: {
+    vh: 480,
+    listH: 424,
+    items: [],
+    loading: true,
+    empty: false,
+    busy: false
+  },
+
+  onInit() {
+    const vh = (typeof global !== 'undefined' && global.designH) || 480
+    this.vh = vh
+    this.listH = vh - 56
+    loadAuth(() => {
+      if (!hasAuth()) { replace('Login'); return }
+      this.load()
+    })
+  },
+
+  load() {
+    this.loading = true
+    get('/api/watch/requests', {}, (err, obj) => {
+      this.loading = false
+      if (err) {
+        if (err.code === 'AUTH') { replace('Login'); return }
+        toast(err.msg || '加载失败')
+        this.empty = true
+        return
+      }
+      const out = []
+      const joins = (obj && obj.joinRequests) || []
+      for (let i = 0; i < joins.length; i++) {
+        const j = joins[i] || {}
+        const pending = (j.status || 'pending') === 'pending'
+        out.push({
+          id: 'j' + j.id,
+          rawId: j.id,
+          kind: 'join',
+          title: '入群申请',
+          desc: String(j.username || ('用户' + String(j.memberOpenid || '').slice(-6))),
+          pending: pending,
+          statusText: pending ? '待处理' : (j.status === 'approved' ? '已同意' : '已拒绝')
+        })
+      }
+      const friends = (obj && obj.friends) || []
+      for (let f = 0; f < friends.length; f++) {
+        out.push({
+          id: 'f' + friends[f].id,
+          rawId: friends[f].id,
+          kind: 'friend',
+          title: '新好友',
+          desc: '用户' + String(friends[f].openid || '').slice(-6),
+          pending: false,
+          statusText: '已添加'
+        })
+      }
+      const evs = (obj && obj.groupEvents) || []
+      for (let g = 0; g < evs.length; g++) {
+        out.push({
+          id: 'g' + evs[g].id,
+          rawId: evs[g].id,
+          kind: 'group',
+          title: evs[g].eventType === 'del' ? '移出群聊' : '加入群聊',
+          desc: '群' + String(evs[g].groupOpenid || '').slice(-6),
+          pending: false,
+          statusText: '已处理'
+        })
+      }
+      this.items = out
+      this.empty = out.length === 0
+    })
+  },
+
+  decide(item, op) {
+    if (!item || this.busy) return
+    this.busy = true
+    post('/api/watch/requests/decide', { id: item.rawId, op: op }, (err) => {
+      this.busy = false
+      if (err) {
+        if (err.code === 'AUTH') { replace('Login'); return }
+        toast(err.msg || '操作失败')
+        return
+      }
+      toast(op === 'approve' ? '已同意' : '已拒绝')
+      this.load()
+    })
+  },
+
+  goBack() {
+    back()
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 336px;
+  height: 480px;
+  background-color: #000000;
+  flex-direction: column;
+}
+.head {
+  width: 336px;
+  height: 56px;
+  flex-direction: row;
+  align-items: center;
+  padding-left: 12px;
+  padding-right: 14px;
+  background-color: #000000;
+  border-bottom-width: 1px;
+  border-bottom-color: #333333;
+}
+.h-back {
+  width: 40px;
+  font-size: 32px;
+  color: #3184d0;
+}
+.h-title {
+  flex-grow: 1;
+  font-size: 23px;
+  color: #ffffff;
+  font-weight: bold;
+}
+.h-right {
+  width: 56px;
+  font-size: 19px;
+  color: #3184d0;
+  text-align: right;
+}
+.list {
+  width: 336px;
+  height: 424px;
+}
+.tip {
+  width: 336px;
+  height: 110px;
+  align-items: center;
+  justify-content: center;
+}
+.tip-t {
+  font-size: 19px;
+  color: #888888;
+}
+.row {
+  width: 336px;
+  height: 88px;
+  flex-direction: row;
+  align-items: center;
+  padding-left: 14px;
+  padding-right: 14px;
+  border-bottom-width: 1px;
+  border-bottom-color: #1a1a1a;
+}
+.info {
+  flex-grow: 1;
+  flex-direction: column;
+}
+.title {
+  font-size: 21px;
+  color: #ffffff;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.desc {
+  font-size: 17px;
+  color: #aaaaaa;
+  lines: 1;
+  text-overflow: ellipsis;
+  margin-top: 3px;
+}
+.ops {
+  flex-direction: row;
+  align-items: center;
+}
+.op-ok {
+  width: 62px;
+  height: 44px;
+  border-radius: 11px;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  background-color: #3184d0;
+}
+.op-no {
+  width: 62px;
+  height: 44px;
+  border-radius: 11px;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  background-color: #333333;
+}
+.op-t {
+  font-size: 18px;
+  color: #ffffff;
+  font-weight: bold;
+}
+.status {
+  width: 70px;
+  font-size: 17px;
+  color: #888888;
+  text-align: right;
+}
+</style>

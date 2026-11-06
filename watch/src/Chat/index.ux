@@ -1,0 +1,1312 @@
+<template>
+  <div class="page" style="height:{{vh}}px">
+    <!-- 顶部 -->
+    <div class="head">
+      <text class="h-back" @click="goBack">‹</text>
+      <div class="h-mid" @click="openMembers" @longpress="renameConv">
+        <text class="h-title">{{ctitle}}</text>
+        <text class="h-sub" if="{{subTitle}}">{{subTitle}}</text>
+      </div>
+      <text class="h-btn-mini" if="{{cscope === 'group'}}" @click="openGroup">管理</text>
+      <text class="h-btn" @click="refresh">刷新</text>
+    </div>
+
+    <!-- 引用条（浮在输入栏上方，不改变布局） -->
+    <div class="reply" if="{{replyId}}">
+      <text class="reply-t">回复 {{replySender}}：{{replyPreview}}</text>
+      <text class="reply-x" @click="clearReply">×</text>
+    </div>
+
+    <!-- 消息列表：list 可上下滚动，list-item 内只放一个 wrapper，避免多分支塌陷 -->
+    <list id="msgList" class="msg-area" style="height:{{listH}}px" bounces="true" @scroll="onListScroll" @scrollbottom="onListBottom">
+      <list-item type="msg" class="mrow" for="{{messages}}" style="height:{{$item.rowH}}px">
+        <div class="mrow-inner" style="height:{{$item.rowH}}px; background-color:{{$item.hl ? '#16304a' : 'transparent'}}">
+          <div class="line-in" if="{{!$item.out}}">
+            <text class="name-in" if="{{$item.showName}}">{{$item.name}}</text>
+            <div class="bub-in" style="width:{{$item.bubW}}px" @click="openMenu($item)" @longpress="openMenu($item)">
+              <div class="quote" if="{{$item.hasReply}}" @click="jumpToReply($item)">
+                <text class="quote-t">{{$item.replyText}}</text>
+              </div>
+              <text class="txt-in" if="{{$item.hasText}}" style="width:{{$item.textW}}px; height:{{$item.textH}}px">{{$item.body}}</text>
+              <image class="msg-img" if="{{$item.isImg}}" src="{{$item.imgUrl}}" style="width:{{$item.imgW}}px; height:{{$item.imgH}}px"></image>
+              <div class="emoji-line" if="{{$item.hasImgs}}">
+                <image class="emoji-img" for="{{img in $item.imgs}}" src="{{img}}"></image>
+              </div>
+              <text class="tag-in" if="{{$item.tag}}">{{$item.tag}}</text>
+            </div>
+          </div>
+          <div class="line-out" else>
+            <div class="bub-out" style="width:{{$item.bubW}}px" @click="openMenu($item)" @longpress="openMenu($item)">
+              <div class="quote" if="{{$item.hasReply}}" @click="jumpToReply($item)">
+                <text class="quote-t">{{$item.replyText}}</text>
+              </div>
+              <text class="txt-out" if="{{$item.hasText}}" style="width:{{$item.textW}}px; height:{{$item.textH}}px">{{$item.body}}</text>
+              <image class="msg-img" if="{{$item.isImg}}" src="{{$item.imgUrl}}" style="width:{{$item.imgW}}px; height:{{$item.imgH}}px"></image>
+              <div class="emoji-line" if="{{$item.hasImgs}}">
+                <image class="emoji-img" for="{{img in $item.imgs}}" src="{{img}}"></image>
+              </div>
+              <text class="tag-out" if="{{$item.tag}}">{{$item.tag}}</text>
+            </div>
+          </div>
+        </div>
+      </list-item>
+      <list-item type="tip" class="tip" if="{{empty}}">
+        <text class="tip-t">{{emptyText}}</text>
+      </list-item>
+    </list>
+
+    <!-- 底部输入栏 -->
+    <div class="bar">
+      <div class="bar-at" if="{{cscope === 'group'}}" @click="toggleAtAll">
+        <text class="bar-at-t">{{atAll ? '@全体 ✓' : '@全体'}}</text>
+      </div>
+      <div class="bar-btn" @click="openEmoji">
+        <image class="bar-btn-i" src="/common/emoji/1f642.png"></image>
+      </div>
+      <div class="bar-input" @click="openKeyboard">
+        <text class="bar-input-t" if="{{draft}}">{{draft}}</text>
+        <text class="bar-input-ph" else>点此输入消息</text>
+      </div>
+      <div class="bar-send-on" if="{{draft}}" @click="sendDraft">
+        <text class="bar-send-t-on">发送</text>
+      </div>
+      <div class="bar-send" else @click="sendDraft">
+        <text class="bar-send-t">发送</text>
+      </div>
+    </div>
+
+    <!-- 表情面板 -->
+    <div class="emoji-panel" if="{{emojiOpen}}" style="bottom:{{emojiBottom}}px">
+      <div class="emoji-row" for="{{row in emojiRows}}">
+        <div class="emoji-cell" for="{{e in row}}" @click="tapEmoji(e.c)">
+          <image class="emoji-cell-i" src="{{e.i}}"></image>
+        </div>
+      </div>
+      <div class="emoji-close" @click="closeEmoji">
+        <text class="emoji-close-t">收起</text>
+      </div>
+    </div>
+
+    <!-- 长按菜单 -->
+    <div class="mask" style="height:{{vh}}px" if="{{menuOpen}}" @click="closeMenu">
+      <div class="menu" @click="noop">
+        <text class="menu-title">{{menuTitle}}</text>
+        <div class="menu-btn" if="{{menuHasReply}}" @click="doJumpReply">
+          <text class="menu-btn-t">查看原消息</text>
+        </div>
+        <div class="menu-btn" if="{{menuHasImage}}" @click="doViewImage">
+          <text class="menu-btn-t">查看大图</text>
+        </div>
+        <div class="menu-btn" @click="doReply">
+          <text class="menu-btn-t">引用回复</text>
+        </div>
+        <div class="menu-btn" if="{{menuCanAt}}" @click="doAt">
+          <text class="menu-btn-t">@ 发送者</text>
+        </div>
+        <div class="menu-btn" if="{{menuCanRecall}}" @click="doRecall">
+          <text class="menu-btn-t">撤回</text>
+        </div>
+        <div class="menu-btn" if="{{menuCanResend}}" @click="doResend">
+          <text class="menu-btn-t">重发</text>
+        </div>
+        <div class="menu-btn-danger" @click="doDelete">
+          <text class="menu-btn-t-danger">删除</text>
+        </div>
+        <div class="menu-btn-cancel" @click="closeMenu">
+          <text class="menu-btn-t">取消</text>
+        </div>
+      </div>
+    </div>
+
+
+  </div>
+</template>
+
+<script>
+import {
+  loadAuth, hasAuth, get, post, replace, go, back, toast,
+  sget, sset, sdel, hhmm, msgText, msgTag, renderEmoji, splitRich, firstImageIndex, buildUrl, prettyTitle
+} from '../common/api.js'
+
+const POLL_MS = 3200
+
+export default {
+  protected: {
+    id: '',
+    title: '',
+    scope: ''
+  },
+
+  private: {
+    cid: '',
+    ctitle: '聊天',
+    cscope: 'c2c',
+    subTitle: '',
+    messages: [],
+    lastSeq: 0,
+    loading: true,
+    empty: false,
+    emptyText: '暂无消息',
+    dbg: 'init',
+    scrollTop: 0,
+    vh: 480,
+    listH: 352,
+    followBottom: true,
+    draft: '',
+    replyId: '',
+    replySender: '',
+    replyPreview: '',
+    menuOpen: false,
+    menuData: null,
+    menuTitle: '',
+    menuCanRecall: false,
+    menuHasReply: false,
+    hlId: '',
+    menuHasReply: false,
+    hlId: '',
+    menuCanResend: false,
+    menuCanAt: false,
+    menuHasImage: false,
+    timer: null,
+    busy: false,
+    polling: false,
+    sending: false,
+    ready: false,
+    active: false,
+    atOpenid: '',
+    atAll: false,
+    atName: '',
+    emojiOpen: false,
+    emojiBottom: 72,
+    emojiRows: [
+      [{ c: '[微笑]', i: '/common/emoji/1f642.png' }, { c: '[撇嘴]', i: '/common/emoji/1f615.png' }, { c: '[色]', i: '/common/emoji/1f60d.png' }, { c: '[发呆]', i: '/common/emoji/1f610.png' }, { c: '[得意]', i: '/common/emoji/1f60f.png' }, { c: '[流泪]', i: '/common/emoji/1f622.png' }],
+      [{ c: '[害羞]', i: '/common/emoji/1f60a.png' }, { c: '[闭嘴]', i: '/common/emoji/1f910.png' }, { c: '[睡]', i: '/common/emoji/1f634.png' }, { c: '[大哭]', i: '/common/emoji/1f62d.png' }, { c: '[尴尬]', i: '/common/emoji/1f605.png' }, { c: '[发怒]', i: '/common/emoji/1f620.png' }],
+      [{ c: '[调皮]', i: '/common/emoji/1f61b.png' }, { c: '[呲牙]', i: '/common/emoji/1f601.png' }, { c: '[惊讶]', i: '/common/emoji/1f62e.png' }, { c: '[难过]', i: '/common/emoji/1f61e.png' }, { c: '[酷]', i: '/common/emoji/1f60e.png' }, { c: '[冷汗]', i: '/common/emoji/1f630.png' }],
+      [{ c: '[抓狂]', i: '/common/emoji/1f62b.png' }, { c: '[吐]', i: '/common/emoji/1f922.png' }, { c: '[偷笑]', i: '/common/emoji/1f92d.png' }, { c: '[可爱]', i: '/common/emoji/1f97a.png' }, { c: '[白眼]', i: '/common/emoji/1f644.png' }, { c: '[傲慢]', i: '/common/emoji/1f624.png' }]
+    ]
+  },
+
+  onInit() {
+    const vh = (typeof global !== 'undefined' && global.designH) || 480
+    this.vh = vh
+    this.listH = vh - 128
+    this.cid = String(this.id || '')
+    this.ctitle = prettyTitle(this.title, this.scope)
+    this.cscope = this.scope === 'group' ? 'group' : 'c2c'
+    this.subTitle = this.cscope === 'group' ? '群聊' : ''
+    this.layout()
+    loadAuth(() => {
+      this.ready = true
+      if (!hasAuth()) { replace('Login'); return }
+      if (!this.cid) { back(); return }
+      this.loadTitle()
+      this.loadInitial()
+    })
+  },
+
+  onShow() {
+    this.active = true
+    const r = typeof global !== 'undefined' ? global.__imeResult : null
+    if (r) {
+      const purpose = (typeof global !== 'undefined' && global.__imeFor) || ''
+      global.__imeResult = null
+      if (typeof global !== 'undefined') global.__imeFor = ''
+      if (r.confirmed) {
+        if (purpose === 'rename') this.saveRemark(String(r.text || ''))
+        else this.draft = String(r.text || '')
+      }
+    }
+    if (!this.ready) return
+    this.startPoll()
+    this.consumeAt()
+  },
+
+  onHide() {
+    this.active = false
+    this.stopPoll()
+  },
+
+  onDestroy() {
+    this.active = false
+    this.stopPoll()
+  },
+
+  layout() {},
+
+  startPoll() {
+    this.stopPoll()
+    this.timer = setInterval(() => {
+      if (!this.active || this.polling) return
+      this.poll()
+    }, POLL_MS)
+  },
+
+  stopPoll() {
+    if (this.timer) { clearInterval(this.timer); this.timer = null }
+  },
+
+  loadTitle() {
+    get('/api/watch/convo', { conversationId: this.cid }, (err, obj) => {
+      const c = err ? {} : (obj && obj.conversation) || {}
+      const t = String(c.title || '').trim()
+      if (t) this.applyTitle(t, c.scope)
+      this.refreshName()
+    })
+  },
+
+  applyTitle(t, scope) {
+    const sc = scope || this.cscope
+    this.ctitle = prettyTitle(t, sc)
+    this.subTitle = sc === 'group' ? '群聊' : '好友'
+  },
+
+  /** 标题还是 openid / 占位名时，让服务端去拉一次真实群名或联系人名称 */
+  refreshName() {
+    if (!this.needsName(this.ctitle)) return
+    post('/api/watch/refresh-names', { conversationId: this.cid }, (err, obj) => {
+      if (err) return
+      const names = (obj && obj.names) || []
+      if (names.length && names[0].title) this.applyTitle(names[0].title, this.cscope)
+    })
+  },
+
+  needsName(t) {
+    const v = String(t || '')
+    if (!v) return true
+    if (/^[0-9A-Fa-f]{16,}$/.test(v)) return true
+    return /^(QQ好友|QQ会话|QQ 群聊|群聊)[·]/.test(v)
+  },
+
+  renameConv() {
+    if (typeof global !== 'undefined') {
+      global.__imeText = this.ctitle || ''
+      global.__imeLabel = this.cscope === 'group' ? '群聊备注名' : '好友备注名'
+      global.__imeFor = 'rename'
+      global.__imeResult = null
+    }
+    go('Ime')
+  },
+
+  saveRemark(name) {
+    const v = String(name || '').trim()
+    post('/api/watch/convo', { conversationId: this.cid, action: 'remark', remark: v }, (err, obj) => {
+      if (err) { toast(err.msg || '改名失败'); return }
+      const c = (obj && obj.conversation) || {}
+      const t = String(c.remark || c.title || v || '').trim()
+      if (t) this.ctitle = prettyTitle(t, this.cscope)
+      toast(v ? '已改名' : '已恢复原名')
+    })
+  },
+
+  loadInitial() {
+    this.loading = true
+    get('/api/watch/messages', { conversationId: this.cid, after: 0, limit: 30 }, (err, obj) => {
+      this.loading = false
+      this.dbg = 'err=' + (err && err.code) + ' ' + (err && err.msg || '')
+      if (err) {
+        if (err.code === 'AUTH') { replace('Login'); return }
+        toast(err.msg || '加载失败')
+        this.empty = true
+        return
+      }
+      const list = (obj && obj.messages) || []
+      try {
+        this.apply(list, true)
+        this.dbg = 'ok ' + this.messages.length
+      } catch (e) {
+        this.messages = []
+        this.empty = true
+        this.emptyText = '渲染失败'
+        this.dbg = 'EX ' + ((e && e.message) || String(e))
+      }
+      this.scrollBottom()
+    })
+  },
+
+  poll() {
+    if (!this.cid) return
+    this.polling = true
+    get('/api/watch/messages', {
+      conversationId: this.cid, after: this.lastSeq || 0, limit: 20, read: 1
+    }, (err, obj) => {
+      this.polling = false
+      if (err) {
+        if (err.code === 'AUTH') replace('Login')
+        return
+      }
+      const list = (obj && obj.messages) || []
+      if (list.length) {
+        try { this.apply(list, false) } catch (e) {}
+        if (this.followBottom) this.scrollBottom()
+      }
+    })
+  },
+
+  apply(list, reset) {
+    const out = reset ? [] : this.messages.slice()
+    const idx = {}
+    for (let k = 0; k < out.length; k++) idx[out[k].id] = k
+    let lastSeq = this.lastSeq || 0
+    let prevTs = 0
+    if (out.length) prevTs = Number(out[out.length - 1].rawTs) || 0
+    // 上一条的发送人：同一个人连续发言时昵称只显示一次
+    let prevSender = out.length ? String(out[out.length - 1].senderName || '') : ''
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i] || {}
+      const seq = Number(m.seq) || 0
+      if (seq > lastSeq) lastSeq = seq
+      const ts = Number(m.createdAt) || 0
+      const isOut = m.direction === 'out'
+      const rawBody = msgText(m)
+      // 表情码 + 真 emoji 字符统一拆成「文字 + 表情图」，手环字体没有 emoji 字形
+      const split = splitRich(rawBody)
+      const body = split.text
+      const emojiImgs = split.imgs || []
+      let tag = this.tagOf(m)
+      const imgIdx = firstImageIndex(m)
+      const imgUrl = imgIdx >= 0 ? buildUrl('/api/watch/media/' + String(m.id || '') + '/' + imgIdx, {}) : ''
+      if (imgUrl) tag = ''
+      // 图片 / 表情包：直接把图画出来（对方发表情时就是这个分支）
+      let imgW = 0
+      let imgH = 0
+      if (imgUrl) {
+        const att = ((m && m.attachments) || [])[imgIdx] || {}
+        const aw = Number(att.width) || 0
+        const ah = Number(att.height) || 0
+        const MAX_IMG = 150
+        if (aw > 0 && ah > 0) {
+          const k = Math.min(MAX_IMG / aw, MAX_IMG / ah, 1)
+          imgW = Math.round(aw * k)
+          imgH = Math.round(ah * k)
+          imgW = Math.max(40, imgW)
+          imgH = Math.max(40, imgH)
+        } else {
+          imgW = 120
+          imgH = 120
+        }
+      }
+      // 有正文用正文；图片消息给文字入口；只剩标签时把标签当正文，避免空气泡
+      let display = body || (imgUrl ? '' : '')
+      let tagText = tag
+      if (!display && tagText) { display = tagText; tagText = '' }
+      if (!display && !emojiImgs.length && !imgUrl) display = '[消息]'
+
+      // 按真实字宽模拟折行：中文 21px、字母 11px、数字 8.8px、其它 ASCII 9px。
+      // 之前按“字数 / 10”估，数字串（1 很窄）会算多一倍行数 → 气泡一大片空白。
+      const MAX_W = 220
+      let lines = 1
+      let cur = 0
+      let widest = 0
+      for (let ci = 0; ci < display.length; ci++) {
+        const code = display.charCodeAt(ci)
+        let cw = 21
+        if (code < 0x2e80) {
+          if (code >= 48 && code <= 57) cw = 8.2
+          else if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122)) cw = 10.4
+          else cw = 8.6
+        }
+        if (cur + cw > MAX_W) { lines += 1; cur = cw } else { cur += cw }
+        if (cur > widest) widest = cur
+      }
+      if (lines > 8) lines = 8
+      // 单行消息让气泡收窄；多行统一用满宽，避免二次折行
+      const textW = lines <= 1 ? Math.min(MAX_W, Math.max(21, Math.ceil(widest) + 2)) : MAX_W
+      const textH = display ? lines * 28 : 0
+      // 表情图单独一行（最多 6 个，30px 一个）
+      const emojiH = emojiImgs.length ? 34 : 0
+      const emojiW = emojiImgs.length ? Math.min(MAX_W, emojiImgs.length * 34) : 0
+      const contentW = Math.max(textW, emojiW, imgW, emojiImgs.length ? 34 : 21)
+      const bubW = contentW + 24
+      const quoteH = (m.replyPreview || m.replySender) ? 30 : 0
+      const bubH = Math.max(46, 18 + textH + emojiH + imgH + quoteH + (tagText ? 22 : 0))
+      // 群聊里对方消息：昵称单独一行（同一人连续发言只显示一次）
+      const showName = !isOut && this.cscope === 'group' && !!String(m.senderName || '').trim() && String(m.senderName) !== prevSender
+      const nameH = showName ? 24 : 0
+      const rowH = bubH + 10 + nameH
+      const vm = {
+        id: String(m.id || ('s' + seq)),
+        rawTs: ts,
+        timeText: hhmm(ts),
+        showTime: !prevTs || (ts - prevTs) > 300000,
+        cls: isOut ? 'mline mline-out' : 'mline mline-in',
+        bcls: isOut ? 'bubble b-out' : 'bubble b-in',
+        showName: showName,
+        name: String(m.senderName || '').slice(0, 12),
+        body: display,
+        bubW: bubW,
+        bubH: bubH,
+        rowH: rowH,
+        textW: textW,
+        textH: textH,
+        imgs: emojiImgs,
+        hasImgs: emojiImgs.length > 0,
+        isImg: !!imgUrl,
+        imgW: imgW,
+        imgH: imgH,
+        hasText: !!display,
+        tag: tagText,
+        imgUrl: imgUrl,
+        tcls: isOut ? 'mtext mtext-out' : 'mtext mtext-in',
+        tagcls: isOut ? 'mtag mtag-out' : 'mtag mtag-in',
+        hasReply: !!(m.replyPreview || m.replySender),
+        replyId: String(m.replyId || m.replyMessageId || ''),
+        replySenderName: String(m.replySender || ''),
+        hl: false,
+        replyId: String(m.replyId || m.replyMessageId || ''),
+        replySenderName: String(m.replySender || ''),
+        hl: false,
+        replyText: this.replyOf(m),
+        senderName: String(m.senderName || ''),
+        senderOpenid: String(m.senderOpenid || m.openid || ''),
+        mid: String(m.id || ''),
+        out: isOut,
+        status: m.status || '',
+        msgType: m.msgType || ''
+      }
+      if (!isOut && String(m.senderName || '').trim()) prevSender = String(m.senderName).trim()
+      else if (isOut) prevSender = ''
+      if (idx[vm.id] !== undefined) {
+        out[idx[vm.id]] = vm
+      } else {
+        idx[vm.id] = out.length
+        out.push(vm)
+      }
+      prevTs = ts
+    }
+    if (out.length > 120) out.splice(0, out.length - 120)
+    this.messages = out
+    this.lastSeq = lastSeq
+    this.empty = out.length === 0
+  },
+
+  tagOf(m) {
+    const t = (m && m.msgType) || ''
+    let tag = msgTag(m)
+    if (m && m.direction === 'out') {
+      if (m.status === 'failed') tag = (tag || '') + ' 发送失败'
+      else if (m.status === 'recalled') tag = (tag || '') + ' 已撤回'
+    }
+    return tag
+  },
+
+  replyOf(m) {
+    const s = String((m && m.replySender) || '').trim()
+    let p = String((m && m.replyPreview) || '').replace(/\s+/g, ' ').trim()
+    if (p.length > 18) p = p.slice(0, 18) + '…'
+    if (s && p) return s.slice(0, 8) + '：' + p
+    if (p) return '引用：' + p
+    return '引用消息'
+  },
+
+  onListScroll(e) {
+    // 手指拖动时暂停自动跟随；滑到底部时恢复
+    if (e && e.scrollState === 1) this.followBottom = false
+  },
+
+  onListBottom() {
+    this.followBottom = true
+  },
+
+  scrollBottom() {
+    const last = this.messages.length - 1
+    if (last < 0) return
+    setTimeout(() => {
+      try {
+        const el = this.$element('msgList')
+        if (el && el.scrollTo) {
+          el.scrollTo({ index: last, behavior: 'instant' })
+          return
+        }
+        if (el && el.scrollBy) el.scrollBy({ top: 99999, behavior: 'instant' })
+      } catch (e) {}
+    }, 120)
+  },
+
+  refresh() {
+    this.loadInitial()
+  },
+
+  openGroup() {
+    go('Group', { cid: this.cid, title: this.ctitle })
+  },
+
+  goBack() {
+    back()
+  },
+
+  openMembers() {
+    if (this.cscope !== 'group') return
+    go('Members', { cid: this.cid })
+  },
+
+  consumeAt() {
+    sget('qq_at', (v) => {
+      if (!v) return
+      sdel('qq_at')
+      const i = v.indexOf('|')
+      const openid = i >= 0 ? v.substring(0, i) : v
+      const name = i >= 0 ? v.substring(i + 1) : ''
+      if (!openid) return
+      this.atOpenid = openid
+      this.atName = name
+      this.draft = this.draft + '@' + (name || '成员') + ' '
+      toast('已选择 @' + (name || '成员'))
+      this.openKeyboard()
+    })
+  },
+
+  /* ---------- 输入 ---------- */
+  openKeyboard() {
+    this.emojiOpen = false
+    if (typeof global !== 'undefined') {
+      global.__imeText = this.draft || ''
+      global.__imeLabel = '发给 ' + (this.ctitle || '')
+      global.__imeResult = null
+    }
+    go('Ime')
+  },
+
+  openEmoji() {
+    this.emojiOpen = !this.emojiOpen
+    this.emojiBottom = 72
+    this.layout()
+  },
+
+  closeEmoji() {
+    this.emojiOpen = false
+  },
+
+  tapEmoji(code) {
+    if (!code) return
+    if (this.draft.length > 160) { toast('太长了'); return }
+    this.draft = this.draft + code
+  },
+
+  toggleAtAll() {
+    if (this.cscope !== 'group') return
+    this.atAll = !this.atAll
+    toast(this.atAll ? '@全体成员：每个群每天只能用 1 次' : '已取消 @全体')
+  },
+
+  sendDraft() {
+    const text = renderEmoji(String(this.draft || '').trim())
+    if (!text) { this.openKeyboard(); return }
+    this.send(text)
+  },
+
+  send(text) {
+    if (this.sending) return
+    this.sending = true
+    const mentions = []
+    if (this.atOpenid) mentions.push({ openid: this.atOpenid, name: this.atName || '' })
+    if (this.atAll) mentions.push({ openid: 'everyone', name: '全体成员' })
+    post('/api/watch/send', {
+      conversationId: this.cid,
+      text: text,
+      replyTo: this.replyId || null,
+      mentions: mentions,
+      tt: 0,
+      how: 'vela'
+    }, (err) => {
+      this.sending = false
+      if (err) {
+        if (err.code === 'AUTH') { replace('Login'); return }
+        toast(err.msg || '发送失败')
+        return
+      }
+      this.draft = ''
+      this.clearReply()
+      this.atOpenid = ''
+      this.atName = ''
+      this.atAll = false
+      this.layout()
+      this.followBottom = true
+      this.poll()
+      this.scrollBottom()
+    })
+  },
+
+  clearReply() {
+    this.replyId = ''
+    this.replySender = ''
+    this.replyPreview = ''
+    this.layout()
+  },
+
+  /* ---------- 长按菜单 ---------- */
+  openMenu(item) {
+    if (!item) return
+    this.menuData = item
+    this.menuTitle = (item.body || '').slice(0, 16)
+    this.menuCanRecall = item.out && item.status === 'sent'
+    this.menuCanResend = item.out && item.status === 'failed'
+    this.menuCanAt = !item.out && !!item.senderOpenid
+    this.menuHasImage = !!item.imgUrl
+    this.menuHasReply = !!item.hasReply
+    this.menuHasReply = !!item.hasReply
+    this.menuOpen = true
+  },
+
+
+  /** 点引用条 / 菜单「查看原消息」：滚到被引用的那条并闪一下 */
+  jumpToReply(item) {
+    if (!item) return
+    const list = this.messages || []
+    let target = -1
+    const rid = String(item.replyId || '')
+    if (rid) {
+      for (let i = list.length - 1; i >= 0; i--) {
+        if (list[i] && list[i].id === rid) { target = i; break }
+      }
+    }
+    if (target < 0) {
+      // QQ 入站引用没有本地 id，按「引用文本 + 发送人」在已加载消息里找最接近的一条
+      let txt = String(item.replyText || '')
+      const ci = txt.indexOf('：')
+      if (ci >= 0) txt = txt.slice(ci + 1)
+      txt = txt.replace(/^引用[:：]?/, '').replace(/…$/, '').trim()
+      const sender = String(item.replySenderName || '').trim()
+      const key = txt.slice(0, 10)
+      for (let i = list.length - 1; i >= 0; i--) {
+        const m = list[i]
+        if (!m || m.id === item.id) continue
+        const body = String(m.body || '')
+        const okText = key ? body.indexOf(key) >= 0 : false
+        const okSender = !sender || String(m.senderName || '').indexOf(sender) >= 0 || sender.indexOf(String(m.senderName || '')) >= 0
+        if (okText && okSender) { target = i; break }
+      }
+    }
+    if (target < 0) { toast('原消息不在当前列表'); return }
+    this.hlId = list[target].id
+    try {
+      const el = this.$element('msgList')
+      if (el && el.scrollTo) el.scrollTo({ index: target, behavior: 'smooth' })
+      else if (el && el.scrollBy) el.scrollBy({ top: -99999, behavior: 'smooth' })
+    } catch (e) {}
+    this.markHighlight(target)
+  },
+
+  markHighlight(index) {
+    const list = this.messages || []
+    this.messages = list.map(function (m, i) { return Object.assign({}, m, { hl: i === index }) })
+    setTimeout(() => {
+      this.messages = (this.messages || []).map(function (m) { return Object.assign({}, m, { hl: false }) })
+    }, 1500)
+  },
+
+  doJumpReply() {
+    const item = this.menuData
+    this.closeMenu()
+    if (item) setTimeout(() => this.jumpToReply(item), 60)
+  },
+
+
+  /** 点引用条 / 菜单「查看原消息」：滚到被引用的那条并闪一下 */
+  jumpToReply(item) {
+    if (!item) return
+    const list = this.messages || []
+    let target = -1
+    const rid = String(item.replyId || '')
+    if (rid) {
+      for (let i = list.length - 1; i >= 0; i--) {
+        if (list[i] && list[i].id === rid) { target = i; break }
+      }
+    }
+    if (target < 0) {
+      // QQ 入站引用没有本地 id，按「引用文本 + 发送人」在已加载消息里找最接近的一条
+      let txt = String(item.replyText || '')
+      const ci = txt.indexOf('：')
+      if (ci >= 0) txt = txt.slice(ci + 1)
+      txt = txt.replace(/^引用[:：]?/, '').replace(/…$/, '').trim()
+      const sender = String(item.replySenderName || '').trim()
+      const key = txt.slice(0, 10)
+      for (let i = list.length - 1; i >= 0; i--) {
+        const m = list[i]
+        if (!m || m.id === item.id) continue
+        const body = String(m.body || '')
+        const okText = key ? body.indexOf(key) >= 0 : false
+        const okSender = !sender || String(m.senderName || '').indexOf(sender) >= 0 || sender.indexOf(String(m.senderName || '')) >= 0
+        if (okText && okSender) { target = i; break }
+      }
+    }
+    if (target < 0) { toast('原消息不在当前列表'); return }
+    this.hlId = list[target].id
+    try {
+      const el = this.$element('msgList')
+      if (el && el.scrollTo) el.scrollTo({ index: target, behavior: 'smooth' })
+      else if (el && el.scrollBy) el.scrollBy({ top: -99999, behavior: 'smooth' })
+    } catch (e) {}
+    this.markHighlight(target)
+  },
+
+  markHighlight(index) {
+    const list = this.messages || []
+    this.messages = list.map(function (m, i) { return Object.assign({}, m, { hl: i === index }) })
+    setTimeout(() => {
+      this.messages = (this.messages || []).map(function (m) { return Object.assign({}, m, { hl: false }) })
+    }, 1500)
+  },
+
+  doJumpReply() {
+    const item = this.menuData
+    this.closeMenu()
+    if (item) setTimeout(() => this.jumpToReply(item), 60)
+  },
+
+  doViewImage() {
+    const item = this.menuData
+    this.closeMenu()
+    if (item && item.imgUrl) this.viewImage(item)
+  },
+
+  viewImage(item) {
+    if (!item || !item.imgUrl) return
+    go('Viewer', { src: encodeURIComponent(item.imgUrl) })
+  },
+
+  closeMenu() {
+    this.menuOpen = false
+    this.menuData = null
+  },
+
+  noop() {},
+
+  doReply() {
+    const m = this.menuData
+    if (!m) return
+    this.replyId = m.mid
+    this.replySender = m.senderName || (m.out ? '我' : '对方')
+    this.replyPreview = (m.body || '').slice(0, 18)
+    this.closeMenu()
+    this.openKeyboard()
+  },
+
+  doAt() {
+    const m = this.menuData
+    if (!m || !m.senderOpenid) return
+    this.atOpenid = m.senderOpenid
+    this.atName = m.senderName
+    this.draft = this.draft + '@' + (m.senderName || '成员') + ' '
+    this.closeMenu()
+    this.openKeyboard()
+  },
+
+  doRecall() {
+    const m = this.menuData
+    this.closeMenu()
+    if (!m) return
+    post('/api/watch/recall', { messageId: m.mid }, (err) => {
+      if (err) { toast(err.msg || '撤回失败'); return }
+      toast('已撤回')
+      this.loadInitial()
+    })
+  },
+
+  doResend() {
+    const m = this.menuData
+    this.closeMenu()
+    if (!m) return
+    post('/api/watch/resend', { messageId: m.mid }, (err) => {
+      if (err) { toast(err.msg || '重发失败'); return }
+      toast('已重发')
+      this.loadInitial()
+    })
+  },
+
+  doDelete() {
+    const m = this.menuData
+    this.closeMenu()
+    if (!m) return
+    post('/api/watch/msg-delete', { messageId: m.mid }, (err) => {
+      if (err) { toast(err.msg || '删除失败'); return }
+      this.loadInitial()
+    })
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 336px;
+  height: 480px;
+  background-color: #000000;
+  position: relative;
+  flex-direction: column;
+}
+.head {
+  width: 336px;
+  height: 56px;
+  flex-direction: row;
+  align-items: center;
+  padding-left: 12px;
+  padding-right: 12px;
+  background-color: #000000;
+  border-bottom-width: 1px;
+  border-bottom-color: #333333;
+}
+.h-back {
+  width: 40px;
+  font-size: 32px;
+  color: #3184d0;
+}
+.h-mid {
+  flex-grow: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.h-title {
+  font-size: 23px;
+  color: #ffffff;
+  font-weight: bold;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.h-sub {
+  font-size: 15px;
+  color: #aaaaaa;
+}
+.h-btn-mini {
+  width: 44px;
+  font-size: 16px;
+  color: #7fb2e5;
+  text-align: center;
+}
+.h-btn {
+  width: 56px;
+  font-size: 19px;
+  color: #3184d0;
+  text-align: right;
+}
+.reply {
+  width: 336px;
+  height: 44px;
+  flex-direction: row;
+  align-items: center;
+  padding-left: 12px;
+  padding-right: 8px;
+  background-color: #1a1610;
+  border-bottom-width: 1px;
+  border-bottom-color: #333333;
+}
+.reply-t {
+  flex-grow: 1;
+  font-size: 17px;
+  color: #b8a68c;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.reply-x {
+  width: 34px;
+  font-size: 24px;
+  color: #aaaaaa;
+  text-align: right;
+}
+.dbgline {
+  width: 336px;
+  height: 22px;
+  font-size: 14px;
+  color: #888888;
+  text-align: center;
+}
+.dbgline {
+  width: 336px;
+  height: 22px;
+  font-size: 14px;
+  color: #888888;
+  text-align: center;
+}
+.msg-area {
+  width: 336px;
+  height: 352px;
+  background-color: #000000;
+}
+.mrow-inner {
+  width: 336px;
+  flex-direction: column;
+}
+.tip {
+  width: 336px;
+  height: 90px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.tip-t {
+  font-size: 19px;
+  color: #888888;
+}
+.mrow {
+  width: 336px;
+  flex-direction: column;
+  justify-content: center;
+}
+.mtime {
+  width: 336px;
+  font-size: 15px;
+  color: #888888;
+  text-align: center;
+  margin-top: 6px;
+  margin-bottom: 4px;
+}
+.mname {
+  font-size: 15px;
+  color: #aaaaaa;
+  margin-bottom: 3px;
+}
+.mreply {
+  border-left-width: 3px;
+  border-left-color: #3184d0;
+  padding-left: 8px;
+  margin-bottom: 5px;
+}
+.mreply-t {
+  font-size: 16px;
+  color: #aaaaaa;
+  lines: 2;
+}
+.mimg {
+  width: 220px;
+  height: 200px;
+  border-radius: 12px;
+  object-fit: cover;
+  margin-bottom: 6px;
+  background-color: #1a1a1a;
+}
+.bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 336px;
+  height: 72px;
+  flex-direction: row;
+  align-items: center;
+  padding-left: 10px;
+  padding-right: 10px;
+  background-color: #000000;
+}
+.bar-btn {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background-color: #262626;
+  align-items: center;
+  justify-content: center;
+}
+.bar-at {
+  height: 44px;
+  padding-left: 8px;
+  padding-right: 8px;
+  margin-right: 4px;
+  border-radius: 12px;
+  background-color: #1f2a36;
+  align-items: center;
+  justify-content: center;
+}
+.bar-at-t {
+  font-size: 15px;
+  color: #7fb2e5;
+}
+.bar-btn-t {
+  font-size: 24px;
+  color: #3184d0;
+}
+.bar-input {
+  flex-grow: 1;
+  height: 50px;
+  margin-left: 8px;
+  margin-right: 8px;
+  border-radius: 100px;
+  background-color: #262626;
+  border-width: 3px;
+  border-color: rgba(255, 255, 255, 0.06);
+  justify-content: center;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+.bar-input-t {
+  font-size: 19px;
+  color: #ffffff;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.bar-input-ph {
+  font-size: 19px;
+  color: #888888;
+}
+.bar-send {
+  width: 62px;
+  height: 46px;
+  border-radius: 12px;
+  background-color: #333333;
+  align-items: center;
+  justify-content: center;
+}
+.bar-send-on {
+  background-color: #3184d0;
+}
+.bar-send-t {
+  font-size: 20px;
+  color: #ffffff;
+  font-weight: bold;
+}
+.bar-send-t-on {
+  color: #ffffff;
+}
+.emoji-panel {
+  position: absolute;
+  left: 0;
+  width: 336px;
+  height: 286px;
+  background-color: #000000;
+  border-top-width: 1px;
+  border-top-color: #333333;
+  flex-direction: column;
+  padding-left: 6px;
+  padding-right: 6px;
+  padding-top: 8px;
+}
+.emoji-row {
+  width: 324px;
+  height: 54px;
+  flex-direction: row;
+}
+.emoji-cell {
+  width: 48px;
+  height: 50px;
+  margin-left: 3px;
+  margin-right: 3px;
+  margin-bottom: 4px;
+  border-radius: 10px;
+  background-color: #262626;
+  align-items: center;
+  justify-content: center;
+}
+.emoji-t {
+  font-size: 18px;
+  color: #ffffff;
+}
+.emoji-close {
+  width: 324px;
+  height: 40px;
+  border-radius: 10px;
+  background-color: #333333;
+  align-items: center;
+  justify-content: center;
+}
+.emoji-close-t {
+  font-size: 18px;
+  color: #aaaaaa;
+}
+.mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 336px;
+  height: 480px;
+  background-color: rgba(0, 0, 0, 0.6);
+  justify-content: center;
+  align-items: center;
+}
+.menu {
+  width: 260px;
+  flex-direction: column;
+  background-color: #1a1610;
+  border-radius: 16px;
+  border-width: 1px;
+  border-color: #333333;
+  padding: 10px;
+}
+.menu-title {
+  width: 240px;
+  font-size: 16px;
+  color: #aaaaaa;
+  text-align: center;
+  lines: 1;
+  text-overflow: ellipsis;
+  margin-bottom: 6px;
+}
+.menu-btn {
+  width: 240px;
+  height: 50px;
+  border-radius: 12px;
+  background-color: #262626;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+.menu-btn-t {
+  font-size: 21px;
+  color: #ffffff;
+}
+.menu-danger {
+  background-color: #2a1512;
+}
+.danger {
+  color: #ff6b5e;
+}
+.menu-cancel {
+  background-color: #333333;
+  margin-bottom: 0;
+}
+.line-in {
+  width: 336px;
+  flex-direction: column;
+  align-items: flex-start;
+  padding-left: 12px;
+  padding-right: 40px;
+}
+.name-in {
+  font-size: 16px;
+  color: #8fa3bd;
+  lines: 1;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+  padding-left: 4px;
+}
+.emoji-line {
+  flex-direction: row;
+  align-items: center;
+  margin-top: 2px;
+}
+.emoji-img {
+  width: 30px;
+  height: 30px;
+  margin-right: 4px;
+}
+.quote {
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  height: 26px;
+  margin-bottom: 4px;
+  padding-left: 6px;
+  border-left-width: 3px;
+  border-left-color: #3184d0;
+  background-color: rgba(49, 132, 208, 0.12);
+  border-radius: 4px;
+}
+.quote-t {
+  font-size: 15px;
+  color: #9fb2c9;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.quote {
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  height: 26px;
+  margin-bottom: 4px;
+  padding-left: 6px;
+  border-left-width: 3px;
+  border-left-color: #3184d0;
+  background-color: rgba(49, 132, 208, 0.12);
+  border-radius: 4px;
+}
+.quote-t {
+  font-size: 15px;
+  color: #9fb2c9;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.msg-img {
+  border-radius: 10px;
+  margin-bottom: 2px;
+  object-fit: contain;
+  background-color: #1a1a1a;
+}
+.bar-btn-i {
+  width: 30px;
+  height: 30px;
+}
+.emoji-cell-i {
+  width: 34px;
+  height: 34px;
+}
+.line-out {
+  width: 336px;
+  flex-direction: row;
+  justify-content: flex-end;
+  padding-left: 40px;
+  padding-right: 12px;
+}
+.bub-in {
+  flex-direction: column;
+  justify-content: center;
+  border-radius: 16px;
+  padding: 9px 12px;
+  background-color: #262626;
+  border-width: 3px;
+  border-color: rgba(255, 255, 255, 0.06);
+}
+.bub-out {
+  flex-direction: column;
+  justify-content: center;
+  border-radius: 16px;
+  padding: 9px 12px;
+  background-color: #3184d0;
+}
+.erow {
+  width: 220px;
+  flex-direction: row;
+  margin-bottom: 4px;
+}
+.eimg {
+  width: 40px;
+  height: 40px;
+  margin-right: 4px;
+}
+.txt-in {
+  font-size: 21px;
+  line-height: 28px;
+  color: #ffffff;
+  lines: 8;
+}
+.txt-out {
+  font-size: 21px;
+  line-height: 28px;
+  color: #ffffff;
+  lines: 8;
+}
+.tag-in {
+  width: 220px;
+  font-size: 16px;
+  color: #aaaaaa;
+  margin-top: 3px;
+}
+.tag-out {
+  width: 220px;
+  font-size: 16px;
+  color: #cccccc;
+  margin-top: 3px;
+}
+.bar-send-on {
+  background-color: #3184d0;
+}
+.bar-send-t-on {
+  color: #ffffff;
+}
+.menu-btn-danger {
+  width: 240px;
+  height: 50px;
+  border-radius: 12px;
+  background-color: #2a1512;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+.menu-btn-t-danger {
+  font-size: 21px;
+  color: #ff6b5e;
+}
+.menu-btn-cancel {
+  width: 240px;
+  height: 50px;
+  border-radius: 12px;
+  background-color: #333333;
+  align-items: center;
+  justify-content: center;
+}
+
+</style>

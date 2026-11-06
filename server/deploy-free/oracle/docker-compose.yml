@@ -1,0 +1,51 @@
+# QQRT 服务端 · 免费公网部署（Oracle Cloud / 任意 Ubuntu 主机）
+#
+#   cd qqrt-server
+#   sudo bash deploy-free/oracle/setup.sh [你的域名]
+#
+# 数据库是进程内 PGlite（PostgreSQL 18 WASM），不需要单独的数据库容器。
+# 不传域名时，脚本会用「公网IP.sslip.io」作为免费域名（自动 HTTPS）。
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: deploy/Dockerfile
+    container_name: qqrt-app
+    restart: unless-stopped
+    environment:
+      PORT: "3005"
+      # PGlite 数据目录（必须挂卷，否则重建丢数据）
+      PGLITE_DIR: /app/pgdata
+      NEXT_PUBLIC_BASE_PATH: ""
+      AUTO_MIGRATE: "1"
+      TZ: Asia/Shanghai
+    volumes:
+      # 数据库（PGlite 数据目录）
+      - pgdata:/app/pgdata
+      # AppSecret 加密密钥，丢了要重新绑机器人
+      - appdata:/app/data
+    expose:
+      - "3005"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: qqrt-caddy
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      DOMAIN: ${DOMAIN:?请在 .env 或环境变量里设置 DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+
+volumes:
+  pgdata:
+  appdata:
+  caddydata:
+  caddyconfig:

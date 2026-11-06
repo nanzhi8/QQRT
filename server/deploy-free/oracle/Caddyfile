@@ -1,0 +1,23 @@
+# Caddy 自动申请并续期 Let's Encrypt 证书。
+# {$DOMAIN} 由 docker-compose 的 environment 注入（例如 1-2-3-4.sslip.io）。
+{$DOMAIN} {
+	encode gzip zstd
+
+	# 请求体上限：手表上传图片/语音
+	request_body {
+		max_size 120MB
+	}
+
+	reverse_proxy app:3005 {
+		# 长轮询会挂起 15s，超时要大于它
+		transport http {
+			read_timeout 60s
+			write_timeout 60s
+		}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

@@ -1,0 +1,286 @@
+<template>
+  <div class="page" style="height:{{vh}}px">
+    <div class="head">
+      <text class="h-back" @click="goBack">‹</text>
+      <text class="h-title">群成员</text>
+      <text class="h-right">{{members.length}} 人</text>
+    </div>
+
+    <list class="list" style="height:{{listH}}px">
+      <list-item type="tip" class="tip" if="{{loading}}">
+        <text class="tip-t">加载中…</text>
+      </list-item>
+      <list-item type="tip" class="tip" if="{{!loading && empty}}">
+        <text class="tip-t">暂无成员</text>
+      </list-item>
+      <list-item type="member" class="row" for="{{members}}" tid="openid" @click="pick($item)" @longpress="openOps($item)">
+        <div class="avatar">
+          <text class="avatar-t">{{$item.avatarChar}}</text>
+        </div>
+        <text class="name">{{$item.name}}</text>
+        <text class="at">@</text>
+      </list-item>
+    </list>
+  </div>
+</template>
+
+<script>
+import { loadAuth, hasAuth, get, post, replace, back, toast, sset } from '../common/api.js'
+
+export default {
+  protected: {
+    cid: ''
+  },
+
+  private: {
+    vh: 480,
+    listH: 424,
+    members: [],
+    loading: true,
+    empty: false
+  },
+
+  onInit() {
+    const vh = (typeof global !== 'undefined' && global.designH) || 480
+    this.vh = vh
+    this.listH = vh - 56
+    loadAuth(() => {
+      if (!hasAuth()) { replace('Login'); return }
+      get('/api/watch/members', { conversationId: this.cid }, (err, obj) => {
+        this.loading = false
+        if (err) {
+          if (err.code === 'AUTH') { replace('Login'); return }
+          toast(err.msg || '加载失败')
+          this.empty = true
+          return
+        }
+        const list = (obj && obj.members) || []
+        const out = []
+        for (let i = 0; i < list.length; i++) {
+          const m = list[i] || {}
+          const openid = String(m.openid || m.memberOpenid || '')
+          const name = String(m.name || ('用户' + openid.slice(-6)))
+          out.push({
+            openid: openid,
+            name: name.slice(0, 12),
+            avatarChar: name.charAt(0) || '友'
+          })
+        }
+        this.members = out
+        this.empty = out.length === 0
+      })
+    })
+  },
+
+
+  openOps(item) {
+    if (!item || !item.openid) return
+    this.opsItem = item
+    this.opsName = item.name
+    this.opsOpen = true
+  },
+
+  closeOps() {
+    this.opsOpen = false
+    this.opsItem = null
+  },
+
+  noop() {},
+
+  doAt() {
+    const item = this.opsItem
+    this.closeOps()
+    if (item) this.pick(item)
+  },
+
+  doMute(minutes) {
+    const item = this.opsItem
+    if (!item || this.busy) return
+    this.busy = true
+    const secs = Number(minutes) * 60
+    post('/api/watch/group/op', {
+      conversationId: this.cid,
+      memberOpenid: item.openid,
+      action: secs > 0 ? 'mute' : 'unmute',
+      seconds: secs,
+      tt: 0
+    }, (err) => {
+      this.busy = false
+      this.closeOps()
+      if (err) { toast(err.msg || '操作失败'); return }
+      toast(secs > 0 ? ('已禁言 ' + minutes + ' 分钟') : '已解除禁言')
+    })
+  },
+
+  doKick() {
+    const item = this.opsItem
+    if (!item || this.busy) return
+    this.busy = true
+    post('/api/watch/group/op', {
+      conversationId: this.cid,
+      memberOpenid: item.openid,
+      action: 'kick',
+      seconds: 0,
+      tt: 0
+    }, (err) => {
+      this.busy = false
+      this.closeOps()
+      if (err) { toast(err.msg || '操作失败'); return }
+      toast('已移出群聊')
+      this.members = (this.members || []).filter(function (m) { return m.openid !== item.openid })
+    })
+  },
+
+  pick(item) {
+    if (!item || !item.openid) return
+    sset('qq_at', item.openid + '|' + item.name)
+    back()
+  },
+
+  goBack() {
+    back()
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 336px;
+  height: 480px;
+  background-color: #000000;
+  flex-direction: column;
+}
+.head {
+  width: 336px;
+  height: 56px;
+  flex-direction: row;
+  align-items: center;
+  padding-left: 12px;
+  padding-right: 14px;
+  background-color: #000000;
+  border-bottom-width: 1px;
+  border-bottom-color: #333333;
+}
+.h-back {
+  width: 40px;
+  font-size: 32px;
+  color: #3184d0;
+}
+.h-title {
+  flex-grow: 1;
+  font-size: 23px;
+  color: #ffffff;
+  font-weight: bold;
+}
+.h-right {
+  width: 70px;
+  font-size: 17px;
+  color: #aaaaaa;
+  text-align: right;
+}
+.list {
+  width: 336px;
+  height: 424px;
+}
+.tip {
+  width: 336px;
+  height: 100px;
+  align-items: center;
+  justify-content: center;
+}
+.tip-t {
+  font-size: 19px;
+  color: #888888;
+}
+.row {
+  width: 336px;
+  height: 74px;
+  flex-direction: row;
+  align-items: center;
+  padding-left: 14px;
+  padding-right: 14px;
+  border-bottom-width: 1px;
+  border-bottom-color: #1a1a1a;
+}
+.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+  background-color: #333333;
+  align-items: center;
+  justify-content: center;
+}
+.avatar-t {
+  font-size: 22px;
+  color: #3184d0;
+  font-weight: bold;
+}
+.name {
+  flex-grow: 1;
+  margin-left: 12px;
+  font-size: 21px;
+  color: #ffffff;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.at {
+  width: 34px;
+  font-size: 22px;
+  color: #3184d0;
+  text-align: right;
+}
+
+.mask {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 336px;
+  height: 480px;
+  background-color: rgba(0, 0, 0, 0.62);
+  align-items: center;
+  justify-content: center;
+}
+.ops {
+  width: 280px;
+  flex-direction: column;
+  background-color: #1c1c1c;
+  border-radius: 18px;
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.ops-title {
+  font-size: 18px;
+  color: #8fa3bd;
+  text-align: center;
+  margin-bottom: 8px;
+}
+.ops-btn {
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-top-width: 1px;
+  border-top-color: #2a2a2a;
+}
+.ops-btn-danger {
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-top-width: 1px;
+  border-top-color: #2a2a2a;
+}
+.ops-btn-cancel {
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-top-width: 1px;
+  border-top-color: #2a2a2a;
+}
+.ops-t {
+  font-size: 18px;
+  color: #e8e8e8;
+}
+.ops-t-danger {
+  font-size: 18px;
+  color: #ff6b6b;
+}
+</style>

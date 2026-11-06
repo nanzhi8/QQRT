@@ -1,0 +1,53 @@
+<template>
+  <div class="page" style="height:{{vh}}px" @click="goBack">
+    <image class="pic" src="{{url}}" if="{{url}}"></image>
+    <text class="hint" else>图片加载失败，点击返回</text>
+  </div>
+</template>
+
+<script>
+import { back } from '../common/api.js'
+
+export default {
+  protected: {
+    src: ''
+  },
+
+  private: {
+    url: '',
+    vh: 480
+  },
+
+  onInit() {
+    this.vh = (typeof global !== 'undefined' && global.designH) || 480
+    let s = String(this.src || '')
+    try { s = decodeURIComponent(s) } catch (e) {}
+    this.url = s
+  },
+
+  goBack() {
+    back()
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 336px;
+  height: 480px;
+  background-color: #000000;
+  align-items: center;
+  justify-content: center;
+}
+.pic {
+  width: 336px;
+  height: 480px;
+  object-fit: contain;
+}
+.hint {
+  width: 300px;
+  font-size: 20px;
+  color: #888888;
+  text-align: center;
+}
+</style>

@@ -1,0 +1,38 @@
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# 环境变量与密钥（绝不能提交）
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secret.key
+
+# 运行时数据
+server/data/
+server/pgdata/
+pgdata/
+data/
+*.log
+*.sqlite
+*.db
+
+# 构建产物 / 打包
+*.rpk
+*.zip
+*.tar.gz
+.temp_qqvela/
+sign/
+build/
+
+# 系统
+.DS_Store
+Thumbs.db

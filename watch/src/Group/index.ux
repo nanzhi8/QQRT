@@ -1,0 +1,190 @@
+<template>
+  <div class="page" style="height:{{vh}}px">
+    <div class="head">
+      <text class="h-back" @click="goBack">‹</text>
+      <text class="h-title">群管理</text>
+      <text class="h-right" @click="editArg">参数</text>
+    </div>
+
+    <div class="arg" if="{{argText}}">
+      <text class="arg-t">{{argLabel}}：{{argText}}</text>
+    </div>
+
+    <div class="tip" if="{{busy}}">
+      <text class="tip-t">请求中…</text>
+    </div>
+
+    <list class="menu" if="{{!rows.length && !busy}}" style="height:{{listH}}px">
+      <list-item type="m" class="cell" for="{{menu}}" @click="exec($item)">
+        <text class="cell-t">{{$item.label}}</text>
+        <text class="cell-s">{{$item.desc}}</text>
+      </list-item>
+    </list>
+
+    <list class="result" if="{{rows.length && !busy}}" style="height:{{listH}}px">
+      <list-item type="r" class="rrow" for="{{rows}}">
+        <text class="rk">{{$item.k}}</text>
+        <text class="rv">{{$item.v}}</text>
+      </list-item>
+      <list-item type="back" class="cell" @click="backToMenu">
+        <text class="cell-t">‹ 返回菜单</text>
+      </list-item>
+    </list>
+  </div>
+</template>
+
+<script>
+import { loadAuth, hasAuth, post, go, back, replace, toast } from '../common/api.js'
+
+const MENU = [
+  { label: '群资料', desc: '群名 / 简介 / 人数', action: 'info' },
+  { label: '机器人群内状态', desc: '角色 / 接收消息设置', action: 'bot_state' },
+  { label: '群成员列表', desc: '含角色、入群时间', action: 'members' },
+  { label: '查询成员详情', desc: '需填成员 openid', action: 'member', arg: '成员 openid' },
+  { label: '禁言状态', desc: '全员规则 + 禁言名单', action: 'mute_state' },
+  { label: '群黑名单', desc: '被拉黑成员列表', action: 'blacklist' },
+  { label: '入群申请列表', desc: '待审批的申请', action: 'join_requests' },
+  { label: '同意入群申请', desc: '需填申请人 openid', action: 'approve', decision: 'approve', arg: '申请人 openid' },
+  { label: '拒绝入群申请', desc: '需填申请人 openid', action: 'approve', decision: 'decline', arg: '申请人 openid' },
+  { label: '禁言 10 分钟', desc: '需填成员 openid', action: 'op', memberAction: 'mute', seconds: 600, arg: '成员 openid' },
+  { label: '解除禁言', desc: '需填成员 openid', action: 'op', memberAction: 'unmute', arg: '成员 openid' },
+  { label: '移出群聊', desc: '需填成员 openid', action: 'op', memberAction: 'kick', arg: '成员 openid' },
+  { label: '移出并拉黑', desc: '需填成员 openid', action: 'op', memberAction: 'kick', blacklist: true, arg: '成员 openid' },
+  { label: '加入黑名单', desc: '需填成员 openid', action: 'op', memberAction: 'blacklist', arg: '成员 openid' },
+  { label: '移出黑名单', desc: '需填成员 openid', action: 'op', memberAction: 'unblacklist', arg: '成员 openid' },
+  { label: '自动审批策略列表', desc: '查询生效中的策略', action: 'strategies' },
+  { label: '开启自动审批', desc: '为本群创建策略', action: 'strategy_create' },
+  { label: '停用自动审批', desc: '需填策略 ID', action: 'strategy_patch', arg: '策略 ID' },
+  { label: '删除自动审批策略', desc: '需填策略 ID', action: 'strategy_delete', arg: '策略 ID' },
+  { label: '执行自动审批策略', desc: '需填策略 ID', action: 'strategy_execute', arg: '策略 ID' },
+  { label: '添加白名单 QQ 号', desc: '需填策略 ID 与 QQ 号', action: 'strategy_whitelist', arg: '策略 ID,QQ号', qq: true }
+]
+
+export default {
+  protected: {
+    cid: '',
+    title: ''
+  },
+
+  private: {
+    vh: 480,
+    listH: 400,
+    menu: MENU,
+    rows: [],
+    busy: false,
+    argText: '',
+    argLabel: '',
+    pending: null
+  },
+
+  onInit() {
+    const vh = (typeof global !== 'undefined' && global.designH) || 480
+    this.vh = vh
+    this.listH = vh - 56
+    loadAuth(() => {
+      if (!hasAuth()) { replace('Login'); return }
+      if (!this.cid) { back(); return }
+    })
+  },
+
+  onShow() {
+    const r = typeof global !== 'undefined' ? global.__imeResult : null
+    if (!r) return
+    global.__imeResult = null
+    if (!r.confirmed) return
+    const v = String(r.text || '').trim()
+    if (!v) return
+    this.argText = v
+    if (this.pending) {
+      const m = this.pending
+      this.pending = null
+      this.run(m)
+    }
+  },
+
+  editArg() {
+    if (typeof global !== 'undefined') {
+      global.__imeText = this.argText || ''
+      global.__imeLabel = '参数'
+      global.__imeResult = null
+    }
+    go('Ime')
+  },
+
+  exec(m) {
+    if (!m) return
+    if (m.arg && !this.argText) {
+      this.pending = m
+      this.argLabel = m.arg
+      this.editArg()
+      return
+    }
+    this.run(m)
+  },
+
+  run(m) {
+    if (this.busy) return
+    this.busy = true
+    this.rows = []
+    const payload = {
+      action: m.action,
+      conversationId: this.cid,
+      memberOpenid: m.action === 'member' || m.action === 'approve' || m.action === 'op' ? this.argText : '',
+      seconds: m.seconds || 0,
+      blacklist: !!m.blacklist,
+      decision: m.decision || 'approve',
+      memberAction: m.memberAction || '',
+      tt: 0
+    }
+    if (m.action === 'approve' || m.action === 'member' || m.action === 'op') payload.memberOpenid = this.argText
+    if (m.action.indexOf('strategy_') === 0 && m.action !== 'strategies' && m.action !== 'strategy_create') {
+      const parts = String(this.argText || '').split(',')
+      payload.strategyId = (parts[0] || '').trim()
+      if (m.qq) payload.qqs = (parts[1] || '').trim() ? [(parts[1] || '').trim()] : []
+      if (m.action === 'strategy_patch') payload.patch = { is_enable: 'off' }
+      payload.op = 'add'
+    }
+    post('/api/watch/group/api', payload, (err, obj) => {
+      this.busy = false
+      if (err) {
+        if (err.code === 'AUTH') { replace('Login'); return }
+        toast(err.msg || '请求失败')
+        return
+      }
+      this.rows = (obj && obj.rows) || [{ k: '结果', v: '成功' }]
+      if (m.action === 'strategy_create' || m.action === 'strategy_patch' || m.action === 'strategy_delete') {
+        toast('操作成功')
+      }
+    })
+  },
+
+  backToMenu() {
+    this.rows = []
+    this.argText = ''
+  },
+
+  goBack() {
+    back()
+  }
+}
+</script>
+
+<style>
+.page { width: 336px; height: 480px; background-color: #000000; flex-direction: column; }
+.head { width: 336px; height: 56px; flex-direction: row; align-items: center; padding-left: 12px; padding-right: 12px; border-bottom-width: 1px; border-bottom-color: #333333; }
+.h-back { width: 40px; font-size: 32px; color: #3184d0; }
+.h-title { flex-grow: 1; font-size: 23px; color: #ffffff; font-weight: bold; }
+.h-right { width: 56px; font-size: 17px; color: #3184d0; text-align: right; }
+.arg { width: 336px; height: 34px; padding-left: 12px; padding-right: 12px; background-color: #14202c; justify-content: center; }
+.arg-t { font-size: 14px; color: #7fb2e5; lines: 1; text-overflow: ellipsis; }
+.tip { width: 336px; height: 60px; align-items: center; justify-content: center; }
+.tip-t { font-size: 18px; color: #8fa3bd; }
+.menu { width: 336px; }
+.result { width: 336px; }
+.cell { width: 336px; height: 60px; flex-direction: column; justify-content: center; padding-left: 14px; padding-right: 14px; border-bottom-width: 1px; border-bottom-color: #222222; }
+.cell-t { font-size: 18px; color: #e8e8e8; }
+.cell-s { font-size: 13px; color: #7a8797; }
+.rrow { width: 336px; min-height: 42px; flex-direction: row; align-items: center; padding-left: 12px; padding-right: 12px; border-bottom-width: 1px; border-bottom-color: #1c1c1c; }
+.rk { width: 130px; font-size: 13px; color: #8fa3bd; lines: 1; text-overflow: ellipsis; }
+.rv { flex-grow: 1; font-size: 13px; color: #d8e2ee; lines: 1; text-overflow: ellipsis; }
+</style>

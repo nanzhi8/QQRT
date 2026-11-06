@@ -1,0 +1,427 @@
+<template>
+  <div class="page" style="height:{{vh}}px">
+    <div class="head">
+      <text class="clock">{{clock}}</text>
+      <div class="head-row">
+        <text class="h-title">QQRT</text>
+        <text class="h-sub" if="{{botText}}">{{botText}}</text>
+        <text class="h-btn" @click="syncAll">{{syncing ? '同步中' : '同步'}}</text>
+        <text class="h-btn" @click="openSettings">设置</text>
+      </div>
+    </div>
+
+    <list class="list" style="height:{{listH}}px" bounces="true" @scrollbottom="onBottom">
+      <list-item type="conv" class="row" for="{{conversations}}" tid="id" @click="openChat($item)" @longpress="renameConv($item)">
+        <div class="avatar">
+          <text class="avatar-t">{{$item.avatarChar}}</text>
+        </div>
+        <div class="body">
+          <div class="line1">
+            <text class="title">{{$item.title}}</text>
+            <text class="time">{{$item.timeText}}</text>
+          </div>
+          <div class="line2">
+            <text class="preview">{{$item.preview}}</text>
+            <div class="badge" if="{{$item.unread > 0}}">
+              <text class="badge-t">{{$item.unreadText}}</text>
+            </div>
+          </div>
+        </div>
+      </list-item>
+
+      <list-item type="empty" class="empty" if="{{empty}}">
+        <text class="empty-t">{{emptyText}}</text>
+      </list-item>
+    </list>
+
+    <div class="foot">
+      <text class="foot-t">{{footText}}</text>
+    </div>
+  </div>
+</template>
+
+<script>
+import {
+  loadAuth, hasAuth, get, post, replace, go, toast, sget, sset, listTime, prettyTitle
+} from '../common/api.js'
+
+const POLL_MS = 3500
+
+export default {
+  private: {
+    conversations: [],
+    empty: true,
+    emptyText: '正在同步…',
+    botText: '',
+    clock: '',
+    footText: '',
+    syncing: false,
+    vh: 480,
+    listH: 372,
+    renameTarget: null,
+    ready: false,
+    cursor: 0,
+    timer: null,
+    busy: false,
+    active: false,
+    tick: 0
+  },
+
+  onInit() {
+    const vh = (typeof global !== 'undefined' && global.designH) || 480
+    this.vh = vh
+    this.listH = vh - 106
+    this.tickClock()
+    loadAuth(() => {
+      this.ready = true
+      if (!hasAuth()) { replace('Login'); return }
+      sget('qq_sync_after', (v) => {
+        this.cursor = Number(v) || 0
+        this.refresh(true)
+        this.refreshNames()
+        this.loadStatus()
+        this.startPoll()
+      })
+    })
+  },
+
+  onShow() {
+    this.active = true
+    const r = typeof global !== 'undefined' ? global.__imeResult : null
+    if (r) {
+      const purpose = (typeof global !== 'undefined' && global.__imeFor) || ''
+      global.__imeResult = null
+      if (typeof global !== 'undefined') global.__imeFor = ''
+      if (r.confirmed && purpose === 'rename' && this.renameTarget) {
+        this.saveRemark(this.renameTarget, String(r.text || ''))
+      }
+    }
+    if (!this.ready) return
+    if (this.timer) return
+    if (!hasAuth()) { replace('Login'); return }
+    this.refresh(false)
+    this.startPoll()
+  },
+
+  onHide() {
+    this.active = false
+    this.stopPoll()
+  },
+
+  onDestroy() {
+    this.active = false
+    this.stopPoll()
+  },
+
+  startPoll() {
+    this.stopPoll()
+    this.active = true
+    this.timer = setInterval(() => {
+      if (!this.active) return
+      this.tickClock()
+      this.tick = this.tick + 1
+      if (this.tick % 6 === 1) this.loadStatus()
+      this.refresh(false)
+    }, POLL_MS)
+  },
+
+  stopPoll() {
+    if (this.timer) {
+      clearInterval(this.timer)
+      this.timer = null
+    }
+  },
+
+  tickClock() {
+    const d = new Date()
+    const hh = d.getHours() < 10 ? '0' + d.getHours() : '' + d.getHours()
+    const mm = d.getMinutes() < 10 ? '0' + d.getMinutes() : '' + d.getMinutes()
+    this.clock = hh + ':' + mm
+  },
+
+  loadStatus() {
+    get('/api/watch/status', {}, (err, obj) => {
+      if (err) return
+      const bot = (obj && obj.bot) || {}
+      if (bot.connected === true) {
+        this.botText = '已连接' + (bot.bot && bot.bot.username ? ' · ' + bot.bot.username : '')
+      } else if (bot.status === 'connecting') {
+        this.botText = '连接中…'
+      } else if (bot.hasCredentials) {
+        this.botText = '机器人离线'
+      } else {
+        this.botText = '未绑定机器人'
+      }
+    })
+  },
+
+  refresh(force) {
+    if (this.busy) return
+    if (!hasAuth()) { replace('Login'); return }
+    this.busy = true
+    get('/api/watch/sync-messages', { after: this.cursor || 0 }, (err, obj) => {
+      this.busy = false
+      if (err) {
+        if (err.code === 'AUTH') { replace('Login'); return }
+        this.empty = this.conversations.length === 0
+        this.emptyText = err.msg || '网络异常'
+        this.footText = err.msg || ''
+        return
+      }
+      this.footText = ''
+      const list = (obj && obj.conversations) || []
+      const out = []
+      let maxSeq = this.cursor || 0
+      for (let i = 0; i < list.length; i++) {
+        const c = list[i] || {}
+        const unread = Number(c.unread) || 0
+        out.push({
+          id: String(c.id || ''),
+          title: prettyTitle(c.title, c.scope),
+          scope: c.scope || 'c2c',
+          unread: unread,
+          unreadText: unread > 99 ? '99+' : String(unread),
+          preview: String(c.lastPreview || ''),
+          timeText: listTime(c.lastMessageAt),
+          avatarChar: (String(c.title || 'Q').charAt(0) || 'Q')
+        })
+      }
+      const groups = (obj && obj.groups) || []
+      for (let g = 0; g < groups.length; g++) {
+        const msgs = (groups[g] && groups[g].messages) || []
+        for (let k = 0; k < msgs.length; k++) {
+          const sq = Number(msgs[k].seq) || 0
+          if (sq > maxSeq) maxSeq = sq
+        }
+      }
+      if (maxSeq !== this.cursor) {
+        this.cursor = maxSeq
+        sset('qq_sync_after', String(maxSeq))
+      }
+      this.conversations = out
+      this.empty = out.length === 0
+      this.emptyText = this.empty ? '暂无会话，等待新消息…' : ''
+    })
+  },
+
+  syncAll() {
+    if (this.syncing) return
+    this.syncing = true
+    post('/api/watch/sync-all', {}, (err, obj) => {
+      this.syncing = false
+      if (err) {
+        if (err.code === 'AUTH') { replace('Login'); return }
+        toast(err.msg || '同步失败')
+        return
+      }
+      toast('已同步 ' + ((obj && obj.synced) || 0) + ' 个会话')
+      this.refresh(true)
+    })
+  },
+
+  renameConv(item) {
+    if (!item || !item.id) return
+    this.renameTarget = item
+    if (typeof global !== 'undefined') {
+      global.__imeText = String(item.title || '')
+      global.__imeLabel = item.scope === 'group' ? '群聊备注名' : '好友备注名'
+      global.__imeFor = 'rename'
+      global.__imeResult = null
+    }
+    go('Ime')
+  },
+
+  refreshNames() {
+    post('/api/watch/refresh-names', {}, (err, obj) => {
+      if (err) return
+      if (obj && obj.updated) this.refresh(true)
+    })
+  },
+
+  saveRemark(item, name) {
+    const v = String(name || '').trim()
+    post('/api/watch/convo', { conversationId: item.id, action: 'remark', remark: v }, (err) => {
+      if (err) { toast(err.msg || '改名失败'); return }
+      toast(v ? '已改名' : '已恢复原名')
+      this.renameTarget = null
+      this.refresh(true)
+    })
+  },
+
+  openChat(item) {
+    if (!item || !item.id) return
+    go('Chat', { id: item.id, title: item.title, scope: item.scope })
+  },
+
+  openSettings() {
+    go('Settings')
+  },
+
+  onBottom() {}
+}
+</script>
+
+<style>
+.page {
+  width: 336px;
+  height: 480px;
+  background-color: #000000;
+  flex-direction: column;
+}
+.head {
+  width: 336px;
+  height: 78px;
+  flex-direction: column;
+  background-color: #000000;
+}
+.clock {
+  width: 336px;
+  height: 26px;
+  font-size: 20px;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.6);
+  text-align: center;
+}
+.head-row {
+  width: 336px;
+  height: 52px;
+  flex-direction: row;
+  align-items: center;
+  padding-left: 14px;
+  padding-right: 12px;
+}
+.h-title {
+  font-size: 26px;
+  color: #ffffff;
+  font-weight: bold;
+  width: 84px;
+}
+.h-sub {
+  flex-grow: 1;
+  font-size: 16px;
+  color: #aaaaaa;
+  lines: 1;
+  text-overflow: ellipsis;
+  margin-left: 8px;
+}
+.h-right {
+  flex-direction: row;
+  align-items: center;
+}
+.h-btn {
+  width: 58px;
+  font-size: 19px;
+  color: #3184d0;
+  text-align: right;
+}
+.list {
+  width: 336px;
+  height: 372px;
+  background-color: #000000;
+}
+.row {
+  width: 320px;
+  height: 78px;
+  margin-left: 8px;
+  margin-right: 8px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+  flex-direction: row;
+  align-items: center;
+  padding-left: 12px;
+  padding-right: 12px;
+  background-color: #262626;
+  border-radius: 16px;
+  border-width: 3px;
+  border-color: rgba(255, 255, 255, 0.06);
+}
+.avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 26px;
+  background-color: #3184d0;
+  align-items: center;
+  justify-content: center;
+}
+.avatar-t {
+  font-size: 24px;
+  color: #3184d0;
+  font-weight: bold;
+}
+.body {
+  flex-grow: 1;
+  margin-left: 12px;
+  flex-direction: column;
+}
+.line1 {
+  width: 100%;
+  height: 30px;
+  flex-direction: row;
+  align-items: center;
+}
+.title {
+  flex-grow: 1;
+  font-size: 23px;
+  color: #ffffff;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.time {
+  width: 66px;
+  font-size: 16px;
+  color: #888888;
+  text-align: right;
+}
+.line2 {
+  width: 100%;
+  height: 26px;
+  flex-direction: row;
+  align-items: center;
+}
+.preview {
+  flex-grow: 1;
+  font-size: 18px;
+  color: #aaaaaa;
+  lines: 1;
+  text-overflow: ellipsis;
+}
+.badge {
+  min-width: 26px;
+  height: 26px;
+  padding-left: 7px;
+  padding-right: 7px;
+  border-radius: 13px;
+  background-color: #d1553c;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+}
+.badge-t {
+  font-size: 16px;
+  color: #ffffff;
+}
+.empty {
+  width: 336px;
+  height: 120px;
+  align-items: center;
+  justify-content: center;
+}
+.empty-t {
+  width: 280px;
+  font-size: 19px;
+  color: #888888;
+  text-align: center;
+  lines: 2;
+}
+.foot {
+  width: 336px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+}
+.foot-t {
+  font-size: 16px;
+  color: #ff6b5e;
+  text-align: center;
+}
+</style>
