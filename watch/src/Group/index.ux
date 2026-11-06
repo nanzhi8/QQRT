@@ -57,8 +57,64 @@ const MENU = [
   { label: '停用自动审批', desc: '需填策略 ID', action: 'strategy_patch', arg: '策略 ID' },
   { label: '删除自动审批策略', desc: '需填策略 ID', action: 'strategy_delete', arg: '策略 ID' },
   { label: '执行自动审批策略', desc: '需填策略 ID', action: 'strategy_execute', arg: '策略 ID' },
-  { label: '添加白名单 QQ 号', desc: '需填策略 ID 与 QQ 号', action: 'strategy_whitelist', arg: '策略 ID,QQ号', qq: true }
+  { label: '添加白名单 QQ 号', desc: '需填策略 ID 与 QQ 号', action: 'strategy_whitelist', arg: '策略 ID,QQ号', qq: true },
+  { label: '发起投票', desc: '发出带 3 个选项的按钮消息', action: 'buttons_send', preset: 'vote' },
+  { label: '发起签到', desc: '发出一键签到按钮', action: 'buttons_send', preset: 'checkin' },
+  { label: '发起审批', desc: '发出同意 / 拒绝按钮', action: 'buttons_send', preset: 'approve' }
 ]
+
+const BUTTON_PRESETS = {
+  "vote": {
+    "text": "投票：选一个吧",
+    "buttons": [
+      {
+        "id": "a",
+        "label": "选项 A",
+        "data": "vote:A"
+      },
+      {
+        "id": "b",
+        "label": "选项 B",
+        "data": "vote:B"
+      },
+      {
+        "id": "c",
+        "label": "选项 C",
+        "data": "vote:C"
+      }
+    ]
+  },
+  "checkin": {
+    "text": "今日签到",
+    "buttons": [
+      {
+        "id": "in",
+        "label": "签到",
+        "data": "checkin:yes"
+      },
+      {
+        "id": "late",
+        "label": "稍后",
+        "data": "checkin:later"
+      }
+    ]
+  },
+  "approve": {
+    "text": "请审批",
+    "buttons": [
+      {
+        "id": "ok",
+        "label": "同意",
+        "data": "approve:yes"
+      },
+      {
+        "id": "no",
+        "label": "拒绝",
+        "data": "approve:no"
+      }
+    ]
+  }
+}
 
 export default {
   protected: {
@@ -111,6 +167,24 @@ export default {
     go('Ime')
   },
 
+
+  sendButtons(m) {
+    if (this.busy) return
+    const p = BUTTON_PRESETS[m.preset] || BUTTON_PRESETS.vote
+    this.busy = true
+    post('/api/watch/buttons/send', {
+      conversationId: this.cid,
+      text: p.text,
+      buttons: p.buttons,
+      tt: 0
+    }, (err) => {
+      this.busy = false
+      if (err) { toast(err.msg || '发送失败'); return }
+      toast('按钮消息已发出')
+      this.rows = [{ k: '按钮消息', v: '已发送，QQ 端点按钮后这里会出提示' }]
+    })
+  },
+
   exec(m) {
     if (!m) return
     if (m.arg && !this.argText) {
@@ -123,6 +197,7 @@ export default {
   },
 
   run(m) {
+    if (m.action === 'buttons_send') { this.sendButtons(m); return }
     if (this.busy) return
     this.busy = true
     this.rows = []

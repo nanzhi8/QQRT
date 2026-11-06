@@ -21,7 +21,10 @@
     <list id="msgList" class="msg-area" style="height:{{listH}}px" bounces="true" @scroll="onListScroll" @scrollbottom="onListBottom">
       <list-item type="msg" class="mrow" for="{{messages}}" style="height:{{$item.rowH}}px">
         <div class="mrow-inner" style="height:{{$item.rowH}}px; background-color:{{$item.hl ? '#16304a' : 'transparent'}}">
-          <div class="line-in" if="{{!$item.out}}">
+          <div class="sys-line" if="{{$item.isSystem}}">
+            <text class="sys-t">{{$item.body}}</text>
+          </div>
+          <div class="line-in" if="{{!$item.isSystem && !$item.out}}">
             <text class="name-in" if="{{$item.showName}}">{{$item.name}}</text>
             <div class="bub-in" style="width:{{$item.bubW}}px" @click="openMenu($item)" @longpress="openMenu($item)">
               <div class="quote" if="{{$item.hasReply}}" @click="jumpToReply($item)">
@@ -32,10 +35,15 @@
               <div class="emoji-line" if="{{$item.hasImgs}}">
                 <image class="emoji-img" for="{{img in $item.imgs}}" src="{{img}}"></image>
               </div>
+              <div class="btn-row" if="{{$item.hasButtons}}">
+                <div class="btn-chip" for="{{b in $item.buttons}}" @click="tapButton($item, b)">
+                  <text class="btn-chip-t">{{b.label}}</text>
+                </div>
+              </div>
               <text class="tag-in" if="{{$item.tag}}">{{$item.tag}}</text>
             </div>
           </div>
-          <div class="line-out" else>
+          <div class="line-out" if="{{!$item.isSystem && $item.out}}">
             <div class="bub-out" style="width:{{$item.bubW}}px" @click="openMenu($item)" @longpress="openMenu($item)">
               <div class="quote" if="{{$item.hasReply}}" @click="jumpToReply($item)">
                 <text class="quote-t">{{$item.replyText}}</text>
@@ -44,6 +52,11 @@
               <image class="msg-img" if="{{$item.isImg}}" src="{{$item.imgUrl}}" style="width:{{$item.imgW}}px; height:{{$item.imgH}}px"></image>
               <div class="emoji-line" if="{{$item.hasImgs}}">
                 <image class="emoji-img" for="{{img in $item.imgs}}" src="{{img}}"></image>
+              </div>
+              <div class="btn-row" if="{{$item.hasButtons}}">
+                <div class="btn-chip" for="{{b in $item.buttons}}" @click="tapButton($item, b)">
+                  <text class="btn-chip-t">{{b.label}}</text>
+                </div>
               </div>
               <text class="tag-out" if="{{$item.tag}}">{{$item.tag}}</text>
             </div>
@@ -417,12 +430,15 @@ export default {
       const emojiW = emojiImgs.length ? Math.min(MAX_W, emojiImgs.length * 34) : 0
       const contentW = Math.max(textW, emojiW, imgW, emojiImgs.length ? 34 : 21)
       const bubW = contentW + 24
+      const isSystem = String(m.msgType || '') === 'system'
+      const buttons = Array.isArray(m.keyboardButtons) ? m.keyboardButtons : []
+      const btnH = buttons.length ? 40 : 0
       const quoteH = (m.replyPreview || m.replySender) ? 30 : 0
-      const bubH = Math.max(46, 18 + textH + emojiH + imgH + quoteH + (tagText ? 22 : 0))
+      const bubH = Math.max(46, 18 + textH + emojiH + imgH + quoteH + btnH + (tagText ? 22 : 0))
       // 群聊里对方消息：昵称单独一行（同一人连续发言只显示一次）
-      const showName = !isOut && this.cscope === 'group' && !!String(m.senderName || '').trim() && String(m.senderName) !== prevSender
+      const showName = !isSystem && !isOut && this.cscope === 'group' && !!String(m.senderName || '').trim() && String(m.senderName) !== prevSender
       const nameH = showName ? 24 : 0
-      const rowH = bubH + 10 + nameH
+      const rowH = isSystem ? 38 : (bubH + 10 + nameH)
       const vm = {
         id: String(m.id || ('s' + seq)),
         rawTs: ts,
@@ -461,7 +477,10 @@ export default {
         mid: String(m.id || ''),
         out: isOut,
         status: m.status || '',
-        msgType: m.msgType || ''
+        msgType: m.msgType || '',
+        isSystem: isSystem,
+        hasButtons: buttons.length > 0,
+        buttons: buttons
       }
       if (!isOut && String(m.senderName || '').trim()) prevSender = String(m.senderName).trim()
       else if (isOut) prevSender = ''
@@ -580,6 +599,20 @@ export default {
     if (!code) return
     if (this.draft.length > 160) { toast('太长了'); return }
     this.draft = this.draft + code
+  },
+
+  tapButton(item, b) {
+    if (!b) return
+    post('/api/watch/buttons/click', {
+      conversationId: this.cid,
+      label: b.label || '',
+      data: b.data || '',
+      tt: 0
+    }, (err) => {
+      if (err) { toast(err.msg || '操作失败'); return }
+      toast('已点击：' + (b.label || ''))
+      this.poll()
+    })
   },
 
   toggleAtAll() {
@@ -1155,6 +1188,38 @@ export default {
   align-items: flex-start;
   padding-left: 12px;
   padding-right: 40px;
+}
+.sys-line {
+  width: 336px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding-left: 20px;
+  padding-right: 20px;
+}
+.sys-t {
+  font-size: 14px;
+  color: #76889b;
+  text-align: center;
+  lines: 2;
+}
+.btn-row {
+  flex-direction: row;
+  margin-top: 6px;
+}
+.btn-chip {
+  height: 32px;
+  padding-left: 10px;
+  padding-right: 10px;
+  margin-right: 6px;
+  border-radius: 10px;
+  background-color: #1d3a55;
+  align-items: center;
+  justify-content: center;
+}
+.btn-chip-t {
+  font-size: 15px;
+  color: #8fc4f5;
 }
 .name-in {
   font-size: 16px;

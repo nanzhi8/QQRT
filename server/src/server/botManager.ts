@@ -52,6 +52,7 @@ import {
 } from "./repo";
 import type { AttachmentMeta, ReplyRef } from "@/db/schema";
 import { probeRemoteImageSize } from "./imageDims";
+import { handleExtraEvent } from "./events";
 
 const execFileAsync = promisify(execFile);
 
@@ -216,6 +217,9 @@ export function requireBot(userId: string): QQBot {
  * 这里改用最小必要 intent，避免因权限不匹配导致「静默连不上」。
  */
 const GROUP_C2C_INTENTS = 1 << 25;
+/** 额外事件：1<<24 群成员进出、1<<26 交互回调；需在平台开通对应权限后再打开 */
+const EXTRA_INTENTS = process.env.QQRT_EXTRA_EVENTS === "1" ? (1 << 24) | (1 << 26) : 0;
+const BOT_INTENTS = GROUP_C2C_INTENTS | EXTRA_INTENTS;
 
 /**
  * SDK 在很多致命场景（机器人未上线/沙箱模式、被平台限制、intent 权限不足）
@@ -317,7 +321,7 @@ export async function connect(userId: string, appIdInput?: string, appSecretInpu
     appSecret: secret!,
     accountId: `${userId}:${appId}`,
     markdownSupport: false,
-    intents: GROUP_C2C_INTENTS,
+    intents: BOT_INTENTS,
     logger: makeBotLogger(userId),
     sessionPersistence: kvSessionPersistence({
       store: new FileKVStore({ dir: config.gatewayDir, fileName: `gw-${userId.slice(0, 8)}-${appId!.slice(-6)}.json` }),
@@ -1357,6 +1361,9 @@ async function handleRawEvent(userId: string, eventType: string, data: unknown):
       log.info(`GROUP_JOIN_REQUEST ${ev.member_openid} -> ${ev.group_openid}`);
       return;
     }
+
+    // 事件补全：好友删除 / 成员进出群 / 消息接收开关 / 订阅状态 / 按钮交互回调
+    await handleExtraEvent(userId, eventType, data);
   } catch (e) {
     log.warn(`raw event ${eventType} handling failed`, e);
   }

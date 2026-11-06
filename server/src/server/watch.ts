@@ -39,6 +39,8 @@ export interface WatchMessage {
   replyId: string | null;
   replySender: string | null;
   attachments: WatchAttachment[];
+  /** 按钮消息的按钮定义（手表端渲染成可点的按钮条） */
+  keyboardButtons?: Array<{ id: string; label: string; data: string }>;
 }
 
 export interface WatchConversation {
@@ -87,6 +89,17 @@ export function watchMessageJson(message: MessageRow): WatchMessage {
 
   const reply = (message.reply as { preview?: string; senderName?: string | null; localId?: string } | null) ?? null;
 
+  const kb = message.msgType === "keyboard"
+    ? ((message.attachments as unknown as Array<Record<string, unknown>> | null) ?? []).find((a) => a && a.kind === "keyboard")
+    : null;
+  const keyboardButtons = kb && Array.isArray(kb.buttons)
+    ? (kb.buttons as Array<Record<string, unknown>>).map((b) => ({
+        id: String(b.id ?? ""),
+        label: String(b.label ?? ""),
+        data: String(b.data ?? ""),
+      }))
+    : [];
+
   return {
     seq: message.seq,
     id: message.id,
@@ -102,6 +115,7 @@ export function watchMessageJson(message: MessageRow): WatchMessage {
     replyId: reply?.localId ?? null,
     replySender: reply?.senderName ?? null,
     attachments,
+    keyboardButtons,
   };
 }
 
