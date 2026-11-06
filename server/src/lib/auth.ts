@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "@/db";
+import { ensureSchema } from "@/db/bootstrap";
 import { sessions, users, type User } from "@/db/schema";
 
 /**
@@ -46,6 +47,7 @@ export function newToken(): string {
 }
 
 export async function createSession(userId: string, userAgent: string | null): Promise<{ token: string; maxAge: number }> {
+  await ensureSchema();
   const now = Date.now();
   const token = newToken();
   await db.insert(sessions).values({
@@ -79,6 +81,7 @@ export function clearSessionCookie(): string {
 
 async function findUserByToken(token: string): Promise<User | null> {
   if (!token || token.length > 200) return null;
+  await ensureSchema();
   const rows = await db
     .select({ user: users, expiresAt: sessions.expiresAt })
     .from(sessions)
@@ -153,6 +156,7 @@ export async function getSessionUserFromRequest(req: Request): Promise<User | nu
 }
 
 export async function registerUser(username: string, password: string): Promise<User> {
+  await ensureSchema();
   const name = username.trim();
   if (!/^[\u4e00-\u9fa5A-Za-z0-9_]{2,20}$/.test(name)) {
     throw new Error("用户名需为 2-20 位中文、字母、数字或下划线");
@@ -168,6 +172,7 @@ export async function registerUser(username: string, password: string): Promise<
 }
 
 export async function loginUser(username: string, password: string): Promise<User> {
+  await ensureSchema();
   const rows = await db.select().from(users).where(eq(users.username, username.trim())).limit(1);
   const user = rows[0];
   if (!user || !verifyPassword(password, user.passwordHash)) {

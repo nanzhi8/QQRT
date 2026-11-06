@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { getAuthToken, linkOf, pathOf } from "@/lib/api";
+import { getAuthToken, linkOf, pathOf, setAuthToken } from "@/lib/api";
 
 /**
  * 安全读取响应体：服务端返回非 JSON（HTML 错误页 / 网关 5xx / 空体）时不抛异常，
@@ -59,13 +59,29 @@ export default function AddUser() {
   const [loginPass, setLoginPass] = useState("");
   const [newUser, setNewUser] = useState("");
   const [newPass, setNewPass] = useState("");
-  const [users, setUsers] = useState<Array<{ id: string; username: string; createdAt: number }>>([]);
+  const [users, setUsers] = useState<Array<{
+    id: string; username: string; createdAt: number;
+    hasBot?: boolean; connected?: boolean; botName?: string | null;
+    appId?: string | null; lastSyncAt?: number | null;
+  }>>([]);
+  const [signupEnabled, setSignupEnabled] = useState(true);
+  const [signupUser, setSignupUser] = useState("");
+  const [signupPass, setSignupPass] = useState("");
+  const [pwdOld, setPwdOld] = useState("");
+  const [pwdNew, setPwdNew] = useState("");
+  const [resetUser, setResetUser] = useState("");
+  const [resetPass, setResetPass] = useState("");
 
   const loadStatus = useCallback(async () => {
     try {
       const res = await fetch(adminUrl("/api/admin/status"), { cache: "no-store" });
       const body = await readBody(res);
       setInitialized(!!body.initialized);
+      try {
+        const sg = await fetch(adminUrl("/api/auth/signup"), { cache: "no-store" });
+        const sb = await readBody(sg);
+        if (sb.success !== false) setSignupEnabled(sb.enabled !== false);
+      } catch { /* 默认显示注册入口 */ }
     } catch {
       setInitialized(false);
     } finally {
@@ -233,6 +249,56 @@ export default function AddUser() {
     }
   };
 
+
+  const callJson = async (path: string, payload: Record<string, unknown>): Promise<Record<string, unknown>> => {
+    const res = await fetch(adminUrl(path), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return readBody(res);
+  };
+
+  const doSignup = async () => {
+    setBusy(true); setError(""); setInfo("");
+    try {
+      const body = await callJson("/api/auth/signup", { username: signupUser.trim(), password: signupPass });
+      if (body.success === false) { setError(errMsg(body, "注册失败")); return; }
+      const token = body.token as string | undefined;
+      if (token) setAuthToken(token);
+      setInfo("注册成功！可用该账号登录手表或在控制台绑定自己的机器人");
+      setSignupUser(""); setSignupPass("");
+    } catch { setError("网络错误，请重试"); } finally { setBusy(false); }
+  };
+
+  const doChangePassword = async () => {
+    setBusy(true); setError(""); setInfo("");
+    try {
+      const body = await callJson("/api/auth/password", { oldPassword: pwdOld, newPassword: pwdNew });
+      if (body.success === false) { setError(errMsg(body, "修改失败")); return; }
+      setInfo("密码已修改"); setPwdOld(""); setPwdNew("");
+    } catch { setError("网络错误，请重试"); } finally { setBusy(false); }
+  };
+
+  const doResetPassword = async () => {
+    setBusy(true); setError(""); setInfo("");
+    try {
+      const body = await callJson("/api/admin/users/password", { username: resetUser.trim(), newPassword: resetPass });
+      if (body.success === false) { setError(errMsg(body, "重置失败")); return; }
+      setInfo("已重置 " + resetUser.trim() + " 的密码"); setResetUser(""); setResetPass("");
+    } catch { setError("网络错误，请重试"); } finally { setBusy(false); }
+  };
+
+  const doToggleSignup = async () => {
+    setBusy(true); setError(""); setInfo("");
+    try {
+      const body = await callJson("/api/admin/signup", { enabled: !signupEnabled });
+      if (body.success === false) { setError(errMsg(body, "设置失败")); return; }
+      setSignupEnabled(!signupEnabled);
+      setInfo(signupEnabled ? "已关闭自助注册" : "已开启自助注册");
+    } catch { setError("网络错误，请重试"); } finally { setBusy(false); }
+  };
+
   if (!ready) {
     return <div className="min-h-screen grid place-items-center"><div className="text-sm text-ink-soft">加载中…</div></div>;
   }
@@ -289,6 +355,29 @@ export default function AddUser() {
               <button onClick={doLogin} disabled={busy} className="w-full h-11 rounded-xl bg-brand text-white font-semibold disabled:opacity-60">
                 {busy ? "请稍候…" : "管理员登录"}
               </button>
+
+              {signupEnabled && (
+                <div className="mt-5 pt-4 border-t border-line">
+                  <div className="text-sm font-semibold text-ink mb-1">没有账号？自助注册</div>
+                  <div className="text-xs text-ink-soft mb-3">创建自己的账号，登录后即可绑定自己的 QQ 机器人</div>
+                  <input
+                    value={signupUser}
+                    onChange={(e) => setSignupUser(e.target.value)}
+                    placeholder="用户名（2-20 位）"
+                    className="w-full h-10 px-3 rounded-lg bg-panel border border-line text-ink text-sm mb-2"
+                  />
+                  <input
+                    type="password"
+                    value={signupPass}
+                    onChange={(e) => setSignupPass(e.target.value)}
+                    placeholder="密码（6-64 位）"
+                    className="w-full h-10 px-3 rounded-lg bg-panel border border-line text-ink text-sm mb-3"
+                  />
+                  <button onClick={doSignup} disabled={busy} className="w-full h-10 rounded-xl bg-panel border border-line text-ink text-sm font-semibold disabled:opacity-60">
+                    注册并登录
+                  </button>
+                </div>
+              )}
             </>
           ) : (
             <>
@@ -322,6 +411,11 @@ export default function AddUser() {
                         <div className="min-w-0">
                           <div className="text-sm text-ink truncate">{u.username}</div>
                           <div className="text-xs text-ink-soft">{new Date(u.createdAt).toLocaleString()}</div>
+                          <div className={u.hasBot ? "text-xs text-brand mt-0.5" : "text-xs text-ink-faint mt-0.5"}>
+                            {u.hasBot
+                              ? `已绑定 ${u.botName || u.appId || "机器人"} · ${u.connected ? "在线" : "离线"}`
+                              : "未绑定机器人"}
+                          </div>
                         </div>
                         <button
                           onClick={() => doDeleteUser(u.id)}
@@ -334,6 +428,36 @@ export default function AddUser() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              <div className="mt-5 pt-4 border-t border-line space-y-4">
+                <div>
+                  <div className="text-sm font-semibold text-ink mb-1">自助注册</div>
+                  <div className="text-xs text-ink-soft mb-2">
+                    当前：{signupEnabled ? "开启（任何人可创建账号）" : "关闭（仅管理员可添加账号）"}
+                  </div>
+                  <button onClick={doToggleSignup} disabled={busy} className="rounded-lg bg-panel border border-line text-ink px-3 py-1.5 text-xs font-semibold disabled:opacity-60">
+                    {signupEnabled ? "关闭自助注册" : "开启自助注册"}
+                  </button>
+                </div>
+
+                <div>
+                  <div className="text-sm font-semibold text-ink mb-1">修改我的密码</div>
+                  <input type="password" value={pwdOld} onChange={(e) => setPwdOld(e.target.value)} placeholder="旧密码"
+                    className="w-full h-9 px-3 rounded-lg bg-panel border border-line text-ink text-sm mb-2" />
+                  <input type="password" value={pwdNew} onChange={(e) => setPwdNew(e.target.value)} placeholder="新密码（6-64 位）"
+                    className="w-full h-9 px-3 rounded-lg bg-panel border border-line text-ink text-sm mb-2" />
+                  <button onClick={doChangePassword} disabled={busy} className="rounded-lg bg-brand text-white px-3 py-1.5 text-xs font-semibold disabled:opacity-60">修改密码</button>
+                </div>
+
+                <div>
+                  <div className="text-sm font-semibold text-ink mb-1">重置用户密码</div>
+                  <input value={resetUser} onChange={(e) => setResetUser(e.target.value)} placeholder="用户名"
+                    className="w-full h-9 px-3 rounded-lg bg-panel border border-line text-ink text-sm mb-2" />
+                  <input type="password" value={resetPass} onChange={(e) => setResetPass(e.target.value)} placeholder="新密码"
+                    className="w-full h-9 px-3 rounded-lg bg-panel border border-line text-ink text-sm mb-2" />
+                  <button onClick={doResetPassword} disabled={busy} className="rounded-lg bg-panel border border-line text-ink px-3 py-1.5 text-xs font-semibold disabled:opacity-60">重置</button>
+                </div>
               </div>
             </>
           )}

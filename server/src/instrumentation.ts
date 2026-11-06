@@ -6,7 +6,10 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  // 稍等片刻再启动，确保数据库连接池就绪。
+  // 建表不要在这里做：instrumentation 与路由分属不同 module graph，
+  // 这里 import db 会再开一个 PGlite 实例，与路由侧抢同一个数据目录。
+  // 幂等建表由各路由通过 @/db/bootstrap 的 ensureSchema() 自行保证。
+  // 稍等片刻再启动机器人，确保数据库连接池就绪。
   setTimeout(() => {
     import("@/server/botManager")
       .then((m) => m.bootAll())

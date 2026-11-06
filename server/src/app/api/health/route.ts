@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { ensureSchema } from "@/db/bootstrap";
 import { sql } from "drizzle-orm";
 import { execFileSync } from "node:child_process";
 
@@ -30,8 +31,27 @@ function hasFfmpeg(): boolean {
 
 export async function GET() {
   try {
+    await ensureSchema();
     await db.execute(sql`select 1`);
-    return Response.json({ ok: true, ffmpeg: hasFfmpeg() });
+    // 轻量计数：排查「会话/群聊不见」时能一眼看出数据在不在
+    const stats = await db.execute<{ users: number; convs: number; groups: number; msgs: number }>(sql`
+      select
+        (select count(*)::int from users) as users,
+        (select count(*)::int from conversations) as convs,
+        (select count(*)::int from conversations where scope = 'group') as groups,
+        (select count(*)::int from messages) as msgs
+    `);
+    const row = (stats.rows?.[0] ?? {}) as { users?: number; convs?: number; groups?: number; msgs?: number };
+    return Response.json({
+      ok: true,
+      ffmpeg: hasFfmpeg(),
+      db: {
+        users: Number(row.users ?? 0),
+        conversations: Number(row.convs ?? 0),
+        groups: Number(row.groups ?? 0),
+        messages: Number(row.msgs ?? 0),
+      },
+    });
   } catch {
     return Response.json({ ok: false, ffmpeg: hasFfmpeg() }, { status: 500 });
   }

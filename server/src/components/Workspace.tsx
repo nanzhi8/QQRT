@@ -188,6 +188,11 @@ export default function Workspace() {
             >
               {authBusy ? "请稍候…" : "登录"}
             </button>
+            <div className="text-center mt-3">
+              <a href={linkOf("/adduser")} className="text-xs text-ink-soft hover:text-brand">
+                没有账号？自助注册 / 账号管理 →
+              </a>
+            </div>
           </div>
         </div>
       </div>
