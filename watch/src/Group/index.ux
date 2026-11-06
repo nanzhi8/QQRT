@@ -2,7 +2,10 @@
   <div class="page" style="height:{{vh}}px">
     <div class="head">
       <text class="h-back" @click="goBack">‹</text>
-      <text class="h-title">群管理</text>
+      <div class="h-mid">
+        <text class="h-title">群管理</text>
+        <text class="h-ver">v4.11.2 · b1129</text>
+      </div>
       <text class="h-right" @click="editArg">参数</text>
     </div>
 
@@ -14,21 +17,17 @@
       <text class="tip-t">请求中…</text>
     </div>
 
-    <list class="menu" if="{{!rows.length && !busy}}" style="height:{{listH}}px">
+    <list class="menu" if="{{showMenu}}" style="height:{{listH}}px">
       <list-item type="m" class="cell" for="{{menu}}" @click="exec($item)">
         <text class="cell-t">{{$item.label}}</text>
         <text class="cell-s">{{$item.desc}}</text>
       </list-item>
     </list>
 
-    <div class="backbar" if="{{rows.length && !busy}}" @click="backToMenu">
-      <text class="backbar-t">‹ 返回菜单　（点行填参数，长按复制值）</text>
-    </div>
-
-    <list class="result" if="{{rows.length && !busy}}" style="height:{{rows.length ? listH - 40 : listH}}px">
-      <list-item type="r" class="rrow" for="{{rows}}" @click="tapRow($item)" @longpress="useAsArg($item)">
-        <text class="rk">{{$item.k || '—'}}</text>
-        <text class="rv">{{$item.v || '—'}}</text>
+    <list class="result" if="{{showResult}}" style="height:{{listH}}px">
+      <list-item type="r" class="rrow" for="{{viewRows}}" @click="tapRow($item)" @longpress="useAsArg($item)">
+        <text class="rk">{{$item.k}}</text>
+        <text class="rv">{{$item.v}}</text>
       </list-item>
     </list>
   </div>
@@ -67,54 +66,26 @@ const MENU = [
 ]
 
 const BUTTON_PRESETS = {
-  "vote": {
-    "text": "投票：选一个吧",
-    "buttons": [
-      {
-        "id": "a",
-        "label": "选项 A",
-        "data": "vote:A"
-      },
-      {
-        "id": "b",
-        "label": "选项 B",
-        "data": "vote:B"
-      },
-      {
-        "id": "c",
-        "label": "选项 C",
-        "data": "vote:C"
-      }
+  vote: {
+    text: '投票：选一个吧',
+    buttons: [
+      { id: 'a', label: '选项 A', data: 'vote:A' },
+      { id: 'b', label: '选项 B', data: 'vote:B' },
+      { id: 'c', label: '选项 C', data: 'vote:C' }
     ]
   },
-  "checkin": {
-    "text": "今日签到",
-    "buttons": [
-      {
-        "id": "in",
-        "label": "签到",
-        "data": "checkin:yes"
-      },
-      {
-        "id": "late",
-        "label": "稍后",
-        "data": "checkin:later"
-      }
+  checkin: {
+    text: '今日签到',
+    buttons: [
+      { id: 'in', label: '签到', data: 'checkin:yes' },
+      { id: 'late', label: '稍后', data: 'checkin:later' }
     ]
   },
-  "approve": {
-    "text": "请审批",
-    "buttons": [
-      {
-        "id": "ok",
-        "label": "同意",
-        "data": "approve:yes"
-      },
-      {
-        "id": "no",
-        "label": "拒绝",
-        "data": "approve:no"
-      }
+  approve: {
+    text: '请审批',
+    buttons: [
+      { id: 'ok', label: '同意', data: 'approve:yes' },
+      { id: 'no', label: '拒绝', data: 'approve:no' }
     ]
   }
 }
@@ -127,9 +98,11 @@ export default {
 
   private: {
     vh: 480,
-    listH: 400,
+    listH: 424,
     menu: MENU,
-    rows: [],
+    viewRows: [],
+    showMenu: true,
+    showResult: false,
     busy: false,
     argText: '',
     argLabel: '',
@@ -171,6 +144,92 @@ export default {
     go('Ime')
   },
 
+  /**
+   * 所有行（含「返回菜单」）统一放进一个数组、统一 type="r"、统一固定高度。
+   * Vela 的 list 混用 for 生成的 list-item 和静态 list-item 时，会只渲染静态项，
+   * 这正是「页面只剩返回菜单」的原因。
+   */
+  setRows(rows) {
+    const src = (rows && rows.length) ? rows : [{ k: '结果', v: '无数据' }]
+    const out = []
+    for (let i = 0; i < src.length; i++) {
+      const r = src[i] || {}
+      out.push({
+        k: String(r.k || '—'),
+        v: String(r.v || '—'),
+        clickable: !!r.clickable,
+        isBack: false
+      })
+    }
+    out.push({ k: '‹ 返回菜单', v: '点这行回菜单', clickable: false, isBack: true })
+    this.viewRows = out
+    this.showMenu = false
+    this.showResult = true
+    this.busy = false
+  },
+
+  backToMenu() {
+    this.viewRows = []
+    this.showResult = false
+    this.showMenu = true
+    this.busy = false
+    this.picking = false
+    this.argText = ''
+  },
+
+  localGid() {
+    const cid = String(this.cid || '')
+    const i = cid.indexOf(':')
+    const gid = i > 0 ? cid.slice(i + 1) : cid
+    this.setRows([
+      { k: '会话 ID', v: cid },
+      { k: '群 openid', v: gid },
+      { k: '提示', v: '长按任意一行可把值填进参数' },
+      { k: '机器人 ID', v: '点「机器人群内状态」看 member_openid' }
+    ])
+  },
+
+  pickMember() {
+    if (this.busy) return
+    this.busy = true
+    get('/api/watch/members', { conversationId: this.cid }, (err, obj) => {
+      if (err) {
+        this.setRows([{ k: '错误', v: String(err.msg || '读取成员失败') }])
+        return
+      }
+      const list = (obj && obj.members) || []
+      if (!list.length) {
+        this.setRows([{ k: '提示', v: '暂无成员，先在群里发一条消息再试' }])
+        return
+      }
+      const out = []
+      for (let i = 0; i < list.length; i++) {
+        const m = list[i] || {}
+        const oid = String(m.openid || m.memberOpenid || '')
+        if (!oid) continue
+        out.push({ k: String(m.name || '成员').slice(0, 8), v: oid, clickable: true })
+      }
+      this.picking = true
+      this.setRows(out.length ? out : [{ k: '提示', v: '成员数据里没有 openid' }])
+    })
+  },
+
+  tapRow(item) {
+    if (!item) return
+    if (item.isBack) { this.backToMenu(); return }
+    if (item.clickable) this.useAsArg(item)
+  },
+
+  useAsArg(item) {
+    if (!item) return
+    if (item.isBack) { this.backToMenu(); return }
+    const v = String(item.v || item.k || '').trim()
+    if (!v || v === '—') return
+    this.backToMenu()
+    this.argText = v
+    this.argLabel = '参数'
+    toast('已填入参数：' + v.slice(0, 12))
+  },
 
   sendButtons(m) {
     if (this.busy) return
@@ -182,73 +241,17 @@ export default {
       buttons: p.buttons,
       tt: 0
     }, (err) => {
-      this.busy = false
-      if (err) { toast(err.msg || '发送失败'); return }
+      if (err) { this.setRows([{ k: '错误', v: String(err.msg || '发送失败') }]); return }
+      this.setRows([{ k: '按钮消息', v: '已发送，QQ 端点按钮后聊天里会出提示' }])
       toast('按钮消息已发出')
-      this.rows = [{ k: '按钮消息', v: '已发送，QQ 端点按钮后这里会出提示' }]
     })
-  },
-
-
-  localGid() {
-    const cid = String(this.cid || '')
-    const i = cid.indexOf(':')
-    const gid = i > 0 ? cid.slice(i + 1) : cid
-    this.rows = [
-      { k: '会话 ID', v: cid },
-      { k: '群 openid', v: gid },
-      { k: '提示', v: '长按任意一行，值会填进「参数」' },
-      { k: '机器人 ID', v: '点「机器人群内状态」可看 member_openid' }
-    ]
-  },
-
-  pickMember() {
-    if (this.busy) return
-    this.busy = true
-    get('/api/watch/members', { conversationId: this.cid }, (err, obj) => {
-      this.busy = false
-      if (err) {
-        toast(err.msg || '读取成员失败')
-        this.rows = [{ k: '错误', v: String(err.msg || '读取失败') }]
-        return
-      }
-      const list = (obj && obj.members) || []
-      if (!list.length) {
-        this.rows = [{ k: '提示', v: '暂无成员，先在群里发一条消息再试' }]
-        return
-      }
-      const out = []
-      for (let i = 0; i < list.length; i++) {
-        const m = list[i] || {}
-        const oid = String(m.openid || m.memberOpenid || '')
-        if (!oid) continue
-        out.push({ k: String(m.name || '成员').slice(0, 8), v: oid, clickable: true })
-      }
-      this.picking = true
-      this.rows = out.length ? out : [{ k: '提示', v: '成员数据里没有 openid' }]
-    })
-  },
-
-  tapRow(item) {
-    if (!item || !item.clickable) return
-    this.useAsArg(item)
-  },
-
-  useAsArg(item) {
-    if (!item) return
-    const v = String(item.v || item.k || '').trim()
-    if (!v || v === '—') return
-    this.argText = v
-    this.argLabel = '参数'
-    this.picking = false
-    this.rows = []
-    toast('已填入参数：' + v.slice(0, 12))
   },
 
   exec(m) {
     if (!m) return
     if (m.action === 'local_gid') { this.localGid(); return }
     if (m.action === 'pick_member') { this.pickMember(); return }
+    if (m.action === 'buttons_send') { this.sendButtons(m); return }
     if (m.arg && !this.argText) {
       this.pending = m
       this.argLabel = m.arg
@@ -259,22 +262,21 @@ export default {
   },
 
   run(m) {
-    if (m.action === 'buttons_send') { this.sendButtons(m); return }
     if (this.busy) return
     this.busy = true
-    this.rows = []
+    this.showMenu = false
+    this.showResult = false
     const payload = {
       action: m.action,
       conversationId: this.cid,
-      memberOpenid: m.action === 'member' || m.action === 'approve' || m.action === 'op' ? this.argText : '',
+      memberOpenid: this.argText,
       seconds: m.seconds || 0,
       blacklist: !!m.blacklist,
       decision: m.decision || 'approve',
       memberAction: m.memberAction || '',
       tt: 0
     }
-    if (m.action === 'approve' || m.action === 'member' || m.action === 'op') payload.memberOpenid = this.argText
-    if (m.action.indexOf('strategy_') === 0 && m.action !== 'strategies' && m.action !== 'strategy_create') {
+    if (String(m.action).indexOf('strategy_') === 0 && m.action !== 'strategies' && m.action !== 'strategy_create') {
       const parts = String(this.argText || '').split(',')
       payload.strategyId = (parts[0] || '').trim()
       if (m.qq) payload.qqs = (parts[1] || '').trim() ? [(parts[1] || '').trim()] : []
@@ -282,24 +284,17 @@ export default {
       payload.op = 'add'
     }
     post('/api/watch/group/api', payload, (err, obj) => {
-      this.busy = false
       if (err) {
         if (err.code === 'AUTH') { replace('Login'); return }
+        this.setRows([{ k: '错误', v: String(err.msg || '请求失败').slice(0, 40) }])
         toast(err.msg || '请求失败')
-        this.rows = [{ k: '错误', v: String(err.msg || '请求失败').slice(0, 40) }]
         return
       }
-      this.rows = (obj && obj.rows) || [{ k: '结果', v: '成功' }]
+      this.setRows((obj && obj.rows) || [{ k: '结果', v: '成功' }])
       if (m.action === 'strategy_create' || m.action === 'strategy_patch' || m.action === 'strategy_delete') {
         toast('操作成功')
       }
     })
-  },
-
-  backToMenu() {
-    this.rows = []
-    this.picking = false
-    this.argText = ''
   },
 
   goBack() {
@@ -312,7 +307,9 @@ export default {
 .page { width: 336px; height: 480px; background-color: #000000; flex-direction: column; }
 .head { width: 336px; height: 56px; flex-direction: row; align-items: center; padding-left: 12px; padding-right: 12px; border-bottom-width: 1px; border-bottom-color: #333333; }
 .h-back { width: 40px; font-size: 32px; color: #3184d0; }
-.h-title { flex-grow: 1; font-size: 23px; color: #ffffff; font-weight: bold; }
+.h-mid { flex-grow: 1; flex-direction: column; justify-content: center; }
+.h-title { font-size: 23px; color: #ffffff; font-weight: bold; }
+.h-ver { font-size: 11px; color: #5f7185; }
 .h-right { width: 56px; font-size: 17px; color: #3184d0; text-align: right; }
 .arg { width: 336px; height: 34px; padding-left: 12px; padding-right: 12px; background-color: #14202c; justify-content: center; }
 .arg-t { font-size: 14px; color: #7fb2e5; lines: 1; text-overflow: ellipsis; }
@@ -323,8 +320,6 @@ export default {
 .cell { width: 336px; height: 60px; flex-direction: column; justify-content: center; padding-left: 14px; padding-right: 14px; border-bottom-width: 1px; border-bottom-color: #222222; }
 .cell-t { font-size: 18px; color: #e8e8e8; }
 .cell-s { font-size: 13px; color: #7a8797; }
-.backbar { width: 336px; height: 40px; flex-direction: row; align-items: center; padding-left: 14px; background-color: #14202c; }
-.backbar-t { font-size: 14px; color: #7fb2e5; }
 .rrow { width: 336px; height: 46px; flex-direction: row; align-items: center; padding-left: 12px; padding-right: 12px; border-bottom-width: 1px; border-bottom-color: #1c1c1c; }
 .rk { width: 130px; font-size: 13px; color: #8fa3bd; lines: 1; text-overflow: ellipsis; }
 .rv { flex-grow: 1; font-size: 13px; color: #d8e2ee; lines: 2; text-overflow: ellipsis; }
