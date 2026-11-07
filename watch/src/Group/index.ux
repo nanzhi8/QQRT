@@ -52,7 +52,7 @@ import { loadAuth, hasAuth, get, post, go, back, replace, toast } from '../commo
 
 /**
  * 群管理：全部用口语写，不出现 openid / 策略 / 接口 等词。
- * 首屏只有 4 件事，点进去再选具体动作。
+ * 首屏只有 3 件事，点进去再选具体动作。
  */
 const GROUPS = [
   {
@@ -66,30 +66,12 @@ const GROUPS = [
     ]
   },
   {
-    key: 'quiet',
-    label: '群里太吵了',
-    desc: '一键全员禁言 / 恢复',
-    items: [
-      { label: '全部人都不许说话', hint: '一键全员禁言', action: 'mute_all', enabled: true, danger: true, done: '已开启全员禁言' },
-      { label: '恢复正常发言', hint: '解除全员禁言', action: 'mute_all', enabled: false, done: '已解除全员禁言' }
-    ]
-  },
-  {
-    key: 'recall',
-    label: '撤回群消息',
-    desc: '把发错的消息删掉',
-    items: [
-      { label: '选一条消息撤回', hint: '列出最近 30 条，点哪条撤哪条', action: 'pick_message' }
-    ]
-  },
-  {
     key: 'info',
     label: '看看这个群',
     desc: '群名、人数、我说话算不算数',
     items: [
       { label: '群名和人数', hint: '这个群叫什么、有多少人', action: 'info' },
-      { label: '我说话算不算数', hint: '我是不是管理员、能不能主动发消息', action: 'bot_state' },
-      { label: '这个群的编号', hint: '别人找你要群 ID 时给他这个', action: 'local_gid' }
+      { label: '我说话算不算数', hint: '我是不是管理员、能不能主动发消息', action: 'bot_state' }
     ]
   },
   {
@@ -371,7 +353,6 @@ export default {
 
   tapItem(it) {
     if (!it) return
-    if (it.action === 'local_gid') { this.localGid(); return }
     if (it.action === 'pick_member') { this.pickMember(); return }
     if (it.action === 'pick_message') { this.pickMessage(); return }
     if (it.action === 'buttons_send') { this.sendButtons(it); return }
@@ -409,16 +390,6 @@ export default {
       { k: '对谁', v: who || '—' },
       { k: '确定，就这么办', v: '点这行执行', confirmYes: true },
       { k: '算了，不做了', v: '点这行返回', isBack: true }
-    ])
-  },
-
-  localGid() {
-    const cid = String(this.cid || '')
-    const i = cid.indexOf(':')
-    const gid = i > 0 ? cid.slice(i + 1) : cid
-    this.setRows([
-      { k: '这个群的编号', v: gid },
-      { k: '什么时候用', v: '别人要你填「群 ID」时，给他这一串' }
     ])
   },
 

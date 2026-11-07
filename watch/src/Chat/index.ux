@@ -671,7 +671,8 @@ export default {
     if (!item) return
     this.menuData = item
     this.menuTitle = (item.body || '').slice(0, 16)
-    this.menuCanRecall = item.out && item.status === 'sent'
+    // 自己发的随时能撤；群聊里管理员也能撤别人 2 分钟内的消息
+    this.menuCanRecall = item.status === 'sent' && (item.out || this.cscope === 'group')
     this.menuCanResend = item.out && item.status === 'failed'
     this.menuCanAt = !item.out && !!item.senderOpenid
     this.menuHasImage = !!item.imgUrl
