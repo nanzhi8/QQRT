@@ -1,18 +1,19 @@
 <template>
   <div class="page">
-    <div class="hero">
+    <scroll class="content" scroll-y="true">
+      <div class="hero">
       <div class="logo"><text class="logo-t">Q</text></div>
       <text class="title">QQRT</text>
       <text class="sub">手环 / 红米手表 · Vela 版</text>
     </div>
 
     <div class="form">
-      <div class="field" @click="editField('host')">
-        <text class="flabel">服务器</text>
-        <text class="fvalue" if="{{host}}">{{hostDisp}}</text>
-        <text class="fvalue-ph" else>点此填写地址 / 短码</text>
-      </div>
-      <div class="field" @click="editField('account')">
+        <div class="field" @click="editField('host')">
+          <text class="flabel">服务器</text>
+          <text class="fvalue" if="{{host}}">{{hostDisp}}</text>
+          <text class="fvalue-ph" else>点此填写地址 / 短码</text>
+        </div>
+        <div class="field" @click="editField('account')">
         <text class="flabel">账号</text>
         <text class="fvalue" if="{{account}}">{{account}}</text>
         <text class="fvalue-ph" else>点此填写网站账号</text>
@@ -24,20 +25,27 @@
       </div>
     </div>
 
+    <div class="remember" @click="toggleRemember">
+          <image class="check" src="{{remember ? '/common/checked.png' : '/common/unchecked.png'}}"></image>
+          <text class="remember-t">保存账号密码并自动登录</text>
+    </div>
+
     <div class="btn" @click="doLogin">
       <text class="btn-t">{{busy ? '登录中…' : '登 录'}}</text>
     </div>
 
     <text class="err" if="{{error}}">{{error}}</text>
+    <text class="tip">密码仅在启用后保存在本机设备中</text>
     <text class="tip">服务器地址可只填分享码（如 TFK3NX7DXP）</text>
     <text class="tip">使用服务器网站内部账号登录</text>
+    </scroll>
   </div>
 </template>
 
 <script>
 import {
-  loadAuth, saveHost, saveLogin, post, toast, replace, go,
-  sget, normHost, isShortCode, resolveShortCode, getHost, DEFAULT_HOST
+  loadAuth, saveHost, saveLogin, clearLogin, saveRememberedLogin, clearRememberedLogin, loadRememberedLogin, get, post, toast, replace, go,
+  sget, normHost, isShortCode, resolveShortCode, getHost, hasAuth, DEFAULT_HOST
 } from '../common/api.js'
 
 export default {
@@ -47,13 +55,23 @@ export default {
     password: '',
     busy: false,
     error: '',
-    imeField: ''
+    imeField: '',
+    remember: false,
+    rememberedHost: '',
+    autoAttempted: false
   },
 
   onInit() {
     loadAuth(() => {
       this.host = getHost() || DEFAULT_HOST
-      sget('qq_acct', (a) => { this.account = a || '' })
+      loadRememberedLogin((saved) => {
+        this.rememberedHost = saved.host
+        this.remember = saved.enabled && saved.host === normHost(this.host)
+        this.account = saved.host === normHost(this.host) ? (saved.account || '') : ''
+        this.password = saved.host === normHost(this.host) ? (saved.password || '') : ''
+        if (saved.enabled && saved.host === normHost(this.host)) this.tryAutoLogin()
+      })
+      sget('qq_acct', (a) => { if (!this.account) this.account = a || '' })
     })
   },
 
@@ -65,24 +83,39 @@ export default {
     const f = this.imeField
     const v = String(r.text || '').trim()
     if (f === 'host') {
-      if (!v) { this.host = ''; return }
+      if (!v) { this.applyHost(''); return }
       if (isShortCode(v)) {
         this.error = '正在解析短码…'
         resolveShortCode(v, (err, url) => {
           if (err) { this.error = err.message; return }
-          this.host = normHost(url)
-          this.error = ''
-          toast('已解析：' + this.host)
+          this.applyHost(url)
         })
         return
       }
-      this.host = normHost(v)
-      this.error = ''
+      this.applyHost(v)
     } else if (f === 'account') {
       this.account = v
     } else if (f === 'password') {
       this.password = String(r.text || '')
     }
+  },
+
+  applyHost(value) {
+    const nextHost = normHost(value)
+    const changed = this.rememberedHost && this.rememberedHost !== nextHost
+    if (!changed) {
+      this.host = nextHost
+      this.error = ''
+      return
+    }
+    clearRememberedLogin((err) => {
+      if (err) { toast('旧服务器凭据未能清除'); return }
+      this.host = nextHost
+      this.password = ''
+      this.remember = false
+      this.rememberedHost = ''
+      this.error = ''
+    })
   },
 
   hostDisp() {
@@ -97,31 +130,79 @@ export default {
     if (typeof global !== 'undefined') {
       global.__imeText = cur
       global.__imeLabel = label
+      global.__imeSensitive = f === 'password'
       global.__imeResult = null
     }
     go('Ime')
   },
 
+  toggleRemember() {
+    if (this.busy) return
+    if (this.remember) {
+      clearRememberedLogin((err) => {
+        if (err) { this.error = '关闭自动登录失败'; toast(this.error); return }
+        this.remember = false
+      })
+      return
+    }
+    this.remember = true
+  },
+
+  tryAutoLogin() {
+    if (this.autoAttempted) return
+    this.autoAttempted = true
+    if (hasAuth()) {
+      this.busy = true
+      get('/api/watch/status', {}, (err) => {
+        if (!err) { this.busy = false; replace('Home'); return }
+        if (err.code !== 'AUTH') { this.busy = false; this.error = err.msg || '自动登录失败'; return }
+        clearLogin((clearErr) => {
+          this.busy = false
+          if (clearErr) { this.error = '清除过期登录状态失败'; return }
+          this.loginWithCredentials(true)
+        })
+      })
+      return
+    }
+    this.loginWithCredentials(true)
+  },
+
   doLogin() {
+    this.loginWithCredentials(false)
+  },
+
+  loginWithCredentials(isAuto) {
     if (this.busy) return
     const host = normHost(this.host)
     const user = String(this.account || '').trim()
     const pass = String(this.password || '')
     if (!host) { this.error = '请先填写服务器地址'; return }
-    if (!user || !pass) { this.error = '请填写账号和密码'; return }
+    if (!user || !pass) {
+      if (!isAuto) this.error = '请填写账号和密码'
+      return
+    }
     this.busy = true
     this.error = ''
     saveHost(host, (e) => {
       if (e) { this.busy = false; this.error = e.message; return }
       post('/api/watch/login', { username: user, password: pass }, (err, obj) => {
-        this.busy = false
         if (err) {
+          this.busy = false
           this.error = err.code === 'AUTH' ? '账号或密码错误' : err.msg
           return
         }
-        if (!obj || !obj.token) { this.error = '服务器未返回登录令牌'; return }
-        saveLogin(obj.token, user)
-        replace('Home')
+        if (!obj || !obj.token) { this.busy = false; this.error = '服务器未返回登录令牌'; return }
+        saveLogin(obj.token, user, (tokenErr) => {
+          if (tokenErr) { this.busy = false; this.error = '登录成功，但保存登录状态失败'; toast(this.error); return }
+          if (this.remember) {
+            saveRememberedLogin(host, user, pass, (saveErr) => {
+              this.busy = false
+              if (saveErr) { this.error = '登录成功，但保存凭据失败'; toast(this.error); return }
+              this.rememberedHost = host
+              replace('Home')
+            })
+          } else { this.busy = false; replace('Home') }
+        })
       })
     })
   }
@@ -133,6 +214,12 @@ export default {
   width: 336px;
   height: 480px;
   background-color: #000000;
+  flex-direction: column;
+  align-items: center;
+}
+.content {
+  width: 336px;
+  height: 480px;
   flex-direction: column;
   align-items: center;
 }
@@ -205,6 +292,22 @@ export default {
   color: #888888;
   lines: 1;
   text-overflow: ellipsis;
+}
+.remember {
+  width: 300px;
+  height: 34px;
+  flex-direction: row;
+  align-items: center;
+  margin-top: 2px;
+}
+.check {
+  width: 28px;
+  height: 28px;
+  margin-right: 8px;
+}
+.remember-t {
+  font-size: 18px;
+  color: #cccccc;
 }
 .btn {
   width: 300px;

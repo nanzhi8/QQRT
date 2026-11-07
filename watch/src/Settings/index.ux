@@ -1,12 +1,12 @@
 <template>
   <div class="page" style="height:{{vh}}px">
-    <div class="main">
       <div class="head">
         <text class="h-back" @click="goBack">‹</text>
         <text class="h-title">设置</text>
-        <text class="h-right">v4.11.0</text>
+          <text class="h-right">v4.12.0</text>
       </div>
 
+    <scroll class="main" scroll-y="true">
       <div class="card">
         <div class="row" @click="editHost">
           <text class="label">服务器</text>
@@ -47,7 +47,7 @@
 
       <text class="about">QQRT · 小米手环 9 Pro 适配版</text>
       <text class="about2">文字聊天 / 引用回复 / @ 群成员 / 撤回</text>
-    </div>
+    </scroll>
 
 
   </div>
@@ -56,7 +56,7 @@
 <script>
 import {
   loadAuth, hasAuth, get, post, replace, go, back, toast, saveHost,
-  sget, sset, normHost, getHost, getAccount, clearLogin, isShortCode, resolveShortCode
+  sget, sset, normHost, getHost, getAccount, clearLogin, clearRememberedLogin, isShortCode, resolveShortCode
 } from '../common/api.js'
 
 export default {
@@ -133,10 +133,23 @@ export default {
 
   applyHost(v) {
     const h = normHost(v)
-    this.host = h
-    this.hostDisp = String(h || '').replace(/^https?:\/\//, '')
-    saveHost(h, () => {})
-    toast('已保存，需重新登录')
+    const changed = this.host && this.host !== h
+    const save = () => {
+      this.host = h
+      this.hostDisp = String(h || '').replace(/^https?:\/\//, '')
+      saveHost(h, (err) => {
+        if (err) { toast(err.message); return }
+        toast('已保存，需重新登录')
+      })
+    }
+    if (changed) {
+      clearRememberedLogin((err) => {
+        if (err) { toast('旧服务器凭据未能清除'); return }
+        save()
+      })
+      return
+    }
+    save()
   },
 
   openRequests() {
@@ -160,8 +173,13 @@ export default {
   },
 
   logout() {
-    clearLogin()
-    replace('Login')
+    clearRememberedLogin((rememberErr) => {
+      if (rememberErr) { toast('清除已保存凭据失败'); return }
+      clearLogin((tokenErr) => {
+        if (tokenErr) { toast('清除登录状态失败'); return }
+        replace('Login')
+      })
+    })
   },
 
   goBack() {
@@ -333,4 +351,5 @@ export default {
   color: #888888;
   margin-top: 4px;
 }
+
 </style>
