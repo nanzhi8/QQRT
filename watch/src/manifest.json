@@ -1,8 +1,8 @@
 {
   "package": "com.qqrt.band",
   "name": "QQRT",
-  "versionName": "4.11.6",
-  "versionCode": 87,
+  "versionName": "4.11.7",
+  "versionCode": 88,
   "icon": "/common/icon.png",
   "minAPILevel": 1,
   "deviceTypeList": [

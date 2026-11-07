@@ -265,7 +265,99 @@ export default {
       const label = FIELD_CN[short] || key
       let val = String(r.v == null ? '—' : r.v)
       if (VALUE_CN[val] !== undefined) val = VALUE_CN[val]
+      if (val.length > 22 && val.indexOf(" ") < 0) val = this.shortId(val)
       out.push({ k: label, v: val })
+    }
+    return out
+  },
+
+  /** 2027-11-07T09:28:53+08:00 → 2027-11-07 09:28 */
+  fmtTime(s) {
+    const t = String(s || '')
+    if (!t) return ''
+    const m = t.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/)
+    if (m) return m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5]
+    return t
+  },
+
+  /** 一长串编号只留头尾，别让用户看天书 */
+  shortId(s) {
+    const t = String(s || '')
+    if (t.length <= 16) return t
+    return t.slice(0, 6) + '…' + t.slice(-4)
+  },
+
+  /**
+   * 按动作把服务端原始数据拼成「人话摘要」。
+   * 默认不显示任何 ID / 时间戳 / 内部字段。
+   */
+  summarize(action, raw) {
+    const out = []
+    if (!raw) return out
+    if (action === 'info') {
+      out.push({ k: '群名', v: raw.group_name || '—' })
+      out.push({ k: '人数', v: String(raw.group_member_num || '—') + ' 人' })
+      if (raw.group_finger_memo) out.push({ k: '群介绍', v: String(raw.group_finger_memo).slice(0, 40) })
+      return out
+    }
+    if (action === 'bot_state') {
+      const role = raw.member_role
+      out.push({
+        k: '我的身份',
+        v: role === 'owner' ? '群主（什么都能做）' : role === 'admin' ? '管理员（能管人）' : '普通成员（管不了人）'
+      })
+      out.push({ k: '进群时间', v: this.fmtTime(raw.joined_at) })
+      out.push({ k: '能不能主动发消息', v: raw.allow_proactive_msg ? '可以' : '不可以' })
+      return out
+    }
+    if (action === 'strategies') {
+      const list = raw.strategies || []
+      out.push({ k: '一共几条规则', v: list.length + ' 条' })
+      for (let i = 0; i < list.length && i < 8; i++) {
+        const s = list[i] || {}
+        const on = s.is_enable === 'on'
+        const wl = Number(s.whitelist_user_count || 0)
+        out.push({
+          k: '规则 ' + (i + 1),
+          v: (on ? '正在用' : '已停用') + ' · 白名单 ' + wl + ' 人 · ' + this.fmtTime(s.expire_at) + ' 到期'
+        })
+      }
+      return out
+    }
+    if (action === 'join_requests') {
+      const list = raw.list || []
+      out.push({ k: '几条申请', v: list.length + ' 条' })
+      for (let i = 0; i < list.length && i < 8; i++) {
+        const r = list[i] || {}
+        let v = this.fmtTime(r.apply_at) + ' 申请'
+        if (r.risk_tips) v += ' · 平台提示有风险'
+        out.push({ k: String(r.username || '有人').slice(0, 8), v: v })
+      }
+      return out
+    }
+    if (action === 'members') {
+      const list = raw.members || []
+      out.push({ k: '群里有', v: list.length + ' 人' })
+      for (let i = 0; i < list.length && i < 8; i++) {
+        const m = list[i] || {}
+        out.push({ k: String(m.username || '没名字').slice(0, 8), v: this.fmtTime(m.joined_at) + ' 进群' })
+      }
+      return out
+    }
+    if (action === 'blacklist') {
+      const list = raw.users || []
+      out.push({ k: '黑名单', v: list.length + ' 人' })
+      for (let i = 0; i < list.length && i < 8; i++) {
+        const u = list[i] || {}
+        out.push({ k: String(u.username || '没名字').slice(0, 8), v: this.fmtTime(u.banned_at) + ' 拉黑' })
+      }
+      return out
+    }
+    if (action === 'mute_state') {
+      const mode = (raw.global_rule && raw.global_rule.mode) || 'none'
+      out.push({ k: '全员禁言', v: mode === 'none' ? '没开' : '开着' })
+      out.push({ k: '单独被禁言的', v: String((raw.members || []).length) + ' 人' })
+      return out
     }
     return out
   },
@@ -398,7 +490,7 @@ export default {
         const label = String(st.remark || '规则 ' + (i + 1))
         this.viewRows.push({
           k: label.slice(0, 8),
-          v: (st.is_enable === 'on' ? '正在用' : '已停用') + ' · 点这行选它',
+          v: (st.is_enable === 'on' ? '正在用' : '已停用') + ' · 白名单 ' + Number(st.whitelist_user_count || 0) + ' 人 · ' + this.fmtTime(st.expire_at) + ' 到期',
           clickable: true,
           sid: id,
           slabel: label
@@ -432,7 +524,7 @@ export default {
         if (!oid) continue
         this.viewRows.push({
           k: String(r.username || '有人').slice(0, 8),
-          v: '点这行选他',
+          v: this.fmtTime(r.apply_at) + ' 申请' + (r.risk_tips ? ' · 有风险' : ''),
           clickable: true,
           oid: oid,
           nm: String(r.username || ''),
@@ -554,7 +646,9 @@ export default {
         this.setRows([{ k: '好了', v: it.done }])
         return
       }
-      const rows = this.humanRows((obj && obj.rows) || [])
+      // 优先用人话摘要；没有摘要才退回通用字段翻译（并把长编号截断）
+      let rows = this.summarize(it.action, (obj && obj.raw) || {})
+      if (!rows.length) rows = this.humanRows((obj && obj.rows) || [])
       if (!rows.length) rows.push({ k: '好了', v: '已经做完' })
       this.setRows(rows)
     })
