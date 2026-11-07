@@ -1,31 +1,45 @@
 <template>
   <div class="page" style="height:{{vh}}px">
     <div class="head">
-      <text class="h-back" @click="goBack">‹</text>
+      <text class="h-back" @click="backOne">‹</text>
       <div class="h-mid">
-        <text class="h-title">群管理</text>
-        <text class="h-ver">v4.11.2 · b1129</text>
+        <text class="h-title">{{title}}</text>
+        <text class="h-ver">{{subtitle}}</text>
       </div>
-      <text class="h-right" @click="editArg">参数</text>
+      <text class="h-right" @click="goBack">退出</text>
     </div>
 
-    <div class="arg" if="{{argText}}">
-      <text class="arg-t">{{argLabel}}：{{argText}}</text>
+    <div class="selbar" if="{{selText}}">
+      <text class="sel-t">{{selText}}</text>
     </div>
 
     <div class="tip" if="{{busy}}">
-      <text class="tip-t">请求中…</text>
+      <text class="tip-t">处理中…</text>
     </div>
 
-    <list class="menu" if="{{showMenu}}" style="height:{{listH}}px">
-      <list-item type="m" class="cell" for="{{menu}}" @click="exec($item)">
+    <list class="menu" if="{{view === 'groups'}}" style="height:{{listH}}px">
+      <list-item type="g" class="cell" for="{{groups}}" @click="openGroup($item)">
         <text class="cell-t">{{$item.label}}</text>
         <text class="cell-s">{{$item.desc}}</text>
       </list-item>
+      <list-item type="g2" class="cell" @click="goBack">
+        <text class="cell-t">‹ 返回聊天</text>
+        <text class="cell-s">群管理只影响当前这个群</text>
+      </list-item>
     </list>
 
-    <list class="result" if="{{showResult}}" style="height:{{listH}}px">
-      <list-item type="r" class="rrow" for="{{viewRows}}" @click="tapRow($item)" @longpress="useAsArg($item)">
+    <list class="menu" if="{{view === 'items'}}" style="height:{{listH}}px">
+      <list-item type="i" class="cell" for="{{items}}" @click="tapItem($item)">
+        <text class="cell-t">{{$item.label}}</text>
+        <text class="cell-s">{{$item.hint}}</text>
+      </list-item>
+      <list-item type="i2" class="cell" @click="backOne">
+        <text class="cell-t">‹ 返回分类</text>
+      </list-item>
+    </list>
+
+    <list class="result" if="{{view === 'result'}}" style="height:{{listH}}px">
+      <list-item type="r" class="rrow" for="{{viewRows}}" @click="tapRow($item)">
         <text class="rk">{{$item.k}}</text>
         <text class="rv">{{$item.v}}</text>
       </list-item>
@@ -36,33 +50,68 @@
 <script>
 import { loadAuth, hasAuth, get, post, go, back, replace, toast } from '../common/api.js'
 
-const MENU = [
-  { label: '本群 ID（openid）', desc: '本地解析，无需联网', action: 'local_gid' },
-  { label: '选择成员取 openid', desc: '点一个人自动填入参数', action: 'pick_member' },
-  { label: '群资料', desc: '群名 / 简介 / 人数', action: 'info' },
-  { label: '机器人群内状态', desc: '角色 / 接收消息设置', action: 'bot_state' },
-  { label: '群成员列表', desc: '含角色、入群时间', action: 'members' },
-  { label: '查询成员详情', desc: '需填成员 openid', action: 'member', arg: '成员 openid' },
-  { label: '禁言状态', desc: '全员规则 + 禁言名单', action: 'mute_state' },
-  { label: '群黑名单', desc: '被拉黑成员列表', action: 'blacklist' },
-  { label: '入群申请列表', desc: '待审批的申请', action: 'join_requests' },
-  { label: '同意入群申请', desc: '需填申请人 openid', action: 'approve', decision: 'approve', arg: '申请人 openid' },
-  { label: '拒绝入群申请', desc: '需填申请人 openid', action: 'approve', decision: 'decline', arg: '申请人 openid' },
-  { label: '禁言 10 分钟', desc: '需填成员 openid', action: 'op', memberAction: 'mute', seconds: 600, arg: '成员 openid' },
-  { label: '解除禁言', desc: '需填成员 openid', action: 'op', memberAction: 'unmute', arg: '成员 openid' },
-  { label: '移出群聊', desc: '需填成员 openid', action: 'op', memberAction: 'kick', arg: '成员 openid' },
-  { label: '移出并拉黑', desc: '需填成员 openid', action: 'op', memberAction: 'kick', blacklist: true, arg: '成员 openid' },
-  { label: '加入黑名单', desc: '需填成员 openid', action: 'op', memberAction: 'blacklist', arg: '成员 openid' },
-  { label: '移出黑名单', desc: '需填成员 openid', action: 'op', memberAction: 'unblacklist', arg: '成员 openid' },
-  { label: '自动审批策略列表', desc: '查询生效中的策略', action: 'strategies' },
-  { label: '开启自动审批', desc: '为本群创建策略', action: 'strategy_create' },
-  { label: '停用自动审批', desc: '需填策略 ID', action: 'strategy_patch', arg: '策略 ID' },
-  { label: '删除自动审批策略', desc: '需填策略 ID', action: 'strategy_delete', arg: '策略 ID' },
-  { label: '执行自动审批策略', desc: '需填策略 ID', action: 'strategy_execute', arg: '策略 ID' },
-  { label: '添加白名单 QQ 号', desc: '需填策略 ID 与 QQ 号', action: 'strategy_whitelist', arg: '策略 ID,QQ号', qq: true },
-  { label: '发起投票', desc: '发出带 3 个选项的按钮消息', action: 'buttons_send', preset: 'vote' },
-  { label: '发起签到', desc: '发出一键签到按钮', action: 'buttons_send', preset: 'checkin' },
-  { label: '发起审批', desc: '发出同意 / 拒绝按钮', action: 'buttons_send', preset: 'approve' }
+/**
+ * 群管理：分组 → 操作 → 结果 三级。
+ * 原则：不让用户记 openid / 策略 ID —— 需要人就点名单，需要规则就点规则。
+ */
+const GROUPS = [
+  {
+    key: 'info',
+    label: '看看这个群',
+    desc: '群资料、机器人权限、本群编号',
+    items: [
+      { label: '群资料', hint: '群名、人数、简介', action: 'info' },
+      { label: '机器人在这里的权限', hint: '是不是管理员、能不能主动发消息', action: 'bot_state' },
+      { label: '本群编号（openid）', hint: '不联网，需要填 ID 时用', action: 'local_gid' }
+    ]
+  },
+  {
+    key: 'member',
+    label: '管群成员',
+    desc: '禁言、移出、拉黑',
+    items: [
+      { label: '选一个成员', hint: '先选人，后面的操作都对他生效', action: 'pick_member' },
+      { label: '看成员名单', hint: '群里都有谁', action: 'members' },
+      { label: '禁言 10 分钟', hint: '让他暂时不能说话', action: 'op', memberAction: 'mute', seconds: 600, needMember: true },
+      { label: '解除禁言', hint: '恢复他说话', action: 'op', memberAction: 'unmute', needMember: true },
+      { label: '移出群聊', hint: '踢出群，之后还能再申请', action: 'op', memberAction: 'kick', needMember: true, danger: true },
+      { label: '移出并拉黑', hint: '踢出去且以后不能申请', action: 'op', memberAction: 'kick', blacklist: true, needMember: true, danger: true },
+      { label: '看黑名单', hint: '被拉黑的人', action: 'blacklist' },
+      { label: '加入黑名单', hint: '不踢人，只禁止再进', action: 'op', memberAction: 'blacklist', needMember: true, danger: true },
+      { label: '移出黑名单', hint: '恢复他的入群资格', action: 'op', memberAction: 'unblacklist', needMember: true }
+    ]
+  },
+  {
+    key: 'join',
+    label: '谁要进群',
+    desc: '同意或拒绝入群申请',
+    items: [
+      { label: '看申请列表', hint: '谁在申请进群', action: 'join_requests' },
+      { label: '同意一个人进群', hint: '从申请列表里点人', action: 'approve', decision: 'approve', needApplicant: true },
+      { label: '拒绝一个人进群', hint: '从申请列表里点人', action: 'approve', decision: 'decline', needApplicant: true }
+    ]
+  },
+  {
+    key: 'auto',
+    label: '自动放人进群',
+    desc: '设规则，不用每次手动批',
+    items: [
+      { label: '看现有规则', hint: '当前生效的自动审批策略', action: 'strategies' },
+      { label: '开启自动同意', hint: '以后申请进群自动通过', action: 'strategy_create' },
+      { label: '停用规则', hint: '先选一条规则', action: 'strategy_patch', needStrategy: true, danger: true },
+      { label: '删除规则', hint: '先选一条规则', action: 'strategy_delete', needStrategy: true, danger: true }
+    ]
+  },
+  {
+    key: 'button',
+    label: '发按钮消息',
+    desc: '群里发带按钮的消息，点一下就有反馈',
+    items: [
+      { label: '发投票', hint: '三个选项，谁点了我能看到', action: 'buttons_send', preset: 'vote' },
+      { label: '发签到', hint: '一键签到按钮', action: 'buttons_send', preset: 'checkin' },
+      { label: '发审批按钮', hint: '同意 / 拒绝两个按钮', action: 'buttons_send', preset: 'approve' }
+    ]
+  }
 ]
 
 const BUTTON_PRESETS = {
@@ -90,24 +139,67 @@ const BUTTON_PRESETS = {
   }
 }
 
+const FIELD_CN = {
+  group_openid: '群编号',
+  member_openid: '成员编号',
+  member_role: '身份',
+  joined_at: '入群时间',
+  allow_proactive_msg: '可主动发消息',
+  recv_msg_setting: '收消息设置',
+  group_name: '群名',
+  group_member_num: '群人数',
+  group_desc: '群简介',
+  strategy_id: '规则编号',
+  is_enable: '是否启用',
+  expire_at: '到期时间',
+  whitelist_user_count: '白名单人数',
+  next_cursor: '下一页游标',
+  username: '昵称',
+  banned_at: '拉黑时间',
+  apply_at: '申请时间',
+  risk_tips: '风险提示',
+  status: '状态'
+}
+
+const VALUE_CN = {
+  member: '普通成员',
+  admin: '管理员',
+  owner: '群主',
+  all: '全部消息',
+  only_mention: '仅 @ 我',
+  mention_and_context: '被 @ 及上下文',
+  on: '已启用',
+  off: '已关闭',
+  true: '是',
+  false: '否',
+  pending: '待处理',
+  approved: '已同意',
+  rejected: '已拒绝'
+}
+
 export default {
   protected: {
     cid: '',
-    title: ''
+    title0: ''
   },
 
   private: {
     vh: 480,
     listH: 424,
-    menu: MENU,
+    title: '群管理',
+    subtitle: '选一个分类开始',
+    groups: GROUPS,
+    items: [],
+    view: 'groups',
     viewRows: [],
-    showMenu: true,
-    showResult: false,
     busy: false,
-    argText: '',
-    argLabel: '',
-    pending: null,
-    picking: false
+    selText: '',
+    selMember: null,
+    selStrategy: null,
+    selApplicant: null,
+    pickMode: '',
+    pendingItem: null,
+    curGroup: null
   },
 
   onInit() {
@@ -120,37 +212,40 @@ export default {
     })
   },
 
-  onShow() {
-    const r = typeof global !== 'undefined' ? global.__imeResult : null
-    if (!r) return
-    global.__imeResult = null
-    if (!r.confirmed) return
-    const v = String(r.text || '').trim()
-    if (!v) return
-    this.argText = v
-    if (this.pending) {
-      const m = this.pending
-      this.pending = null
-      this.run(m)
-    }
+  openGroup(g) {
+    if (!g) return
+    this.curGroup = g
+    this.items = g.items || []
+    this.title = g.label
+    this.subtitle = g.desc || ''
+    this.view = 'items'
   },
 
-  editArg() {
-    if (typeof global !== 'undefined') {
-      global.__imeText = this.argText || ''
-      global.__imeLabel = '参数'
-      global.__imeResult = null
+  backOne() {
+    if (this.view === 'result') {
+      this.view = this.curGroup ? 'items' : 'groups'
+      this.title = this.curGroup ? this.curGroup.label : '群管理'
+      this.subtitle = this.curGroup ? (this.curGroup.desc || '') : '选一个分类开始'
+      this.viewRows = []
+      this.pickMode = ''
+      return
     }
-    go('Ime')
+    if (this.view === 'items') {
+      this.view = 'groups'
+      this.curGroup = null
+      this.title = '群管理'
+      this.subtitle = '选一个分类开始'
+      return
+    }
+    back()
   },
 
-  /**
-   * 所有行（含「返回菜单」）统一放进一个数组、统一 type="r"、统一固定高度。
-   * Vela 的 list 混用 for 生成的 list-item 和静态 list-item 时，会只渲染静态项，
-   * 这正是「页面只剩返回菜单」的原因。
-   */
+  goBack() {
+    back()
+  },
+
   setRows(rows) {
-    const src = (rows && rows.length) ? rows : [{ k: '结果', v: '无数据' }]
+    const src = (rows && rows.length) ? rows : [{ k: '结果', v: '没有数据' }]
     const out = []
     for (let i = 0; i < src.length; i++) {
       const r = src[i] || {}
@@ -158,23 +253,76 @@ export default {
         k: String(r.k || '—'),
         v: String(r.v || '—'),
         clickable: !!r.clickable,
-        isBack: false
+        isBack: !!r.isBack,
+        confirmYes: !!r.confirmYes
       })
     }
-    out.push({ k: '‹ 返回菜单', v: '点这行回菜单', clickable: false, isBack: true })
+    out.push({ k: '‹ 返回', v: '点这行回上一页', isBack: true })
     this.viewRows = out
-    this.showMenu = false
-    this.showResult = true
+    this.view = 'result'
     this.busy = false
   },
 
-  backToMenu() {
-    this.viewRows = []
-    this.showResult = false
-    this.showMenu = true
-    this.busy = false
-    this.picking = false
-    this.argText = ''
+  humanRows(rows) {
+    const out = []
+    for (let i = 0; i < (rows || []).length; i++) {
+      const r = rows[i] || {}
+      const key = String(r.k || '')
+      const short = key.indexOf('.') >= 0 ? key.slice(key.lastIndexOf('.') + 1) : key
+      const label = FIELD_CN[short] || key
+      let val = String(r.v == null ? '—' : r.v)
+      if (VALUE_CN[val] !== undefined) val = VALUE_CN[val]
+      out.push({ k: label, v: val })
+    }
+    return out
+  },
+
+  refreshSel() {
+    const parts = []
+    if (this.selMember) parts.push('成员：' + (this.selMember.name || this.selMember.openid.slice(0, 8)))
+    if (this.selStrategy) parts.push('规则：' + (this.selStrategy.label || this.selStrategy.id.slice(0, 10)))
+    if (this.selApplicant) parts.push('申请人：' + (this.selApplicant.name || this.selApplicant.openid.slice(0, 8)))
+    this.selText = parts.join('　')
+  },
+
+  tapItem(it) {
+    if (!it) return
+    if (it.action === 'local_gid') { this.localGid(); return }
+    if (it.action === 'pick_member') { this.pickMember(); return }
+    if (it.action === 'buttons_send') { this.sendButtons(it); return }
+
+    if (it.needMember && !this.selMember) {
+      toast('先选一个成员')
+      this.pendingItem = it
+      this.pickMember()
+      return
+    }
+    if (it.needApplicant && !this.selApplicant) {
+      this.pendingItem = it
+      this.pickApplicant(it)
+      return
+    }
+    if (it.needStrategy && !this.selStrategy) {
+      toast('先选一条规则')
+      this.pendingItem = it
+      this.pickStrategy()
+      return
+    }
+    if (it.danger) { this.confirm(it); return }
+    this.run(it)
+  },
+
+  confirm(it) {
+    const who = it.needMember && this.selMember
+      ? (this.selMember.name || this.selMember.openid.slice(0, 8))
+      : (it.needStrategy && this.selStrategy ? (this.selStrategy.label || this.selStrategy.id) : '')
+    this.pendingItem = it
+    this.setRows([
+      { k: '要执行', v: it.label },
+      { k: '对象', v: who || '—' },
+      { k: '确认执行', v: '点这行继续', confirmYes: true },
+      { k: '取消', v: '点这行返回', isBack: true }
+    ])
   },
 
   localGid() {
@@ -182,10 +330,8 @@ export default {
     const i = cid.indexOf(':')
     const gid = i > 0 ? cid.slice(i + 1) : cid
     this.setRows([
-      { k: '会话 ID', v: cid },
-      { k: '群 openid', v: gid },
-      { k: '提示', v: '长按任意一行可把值填进参数' },
-      { k: '机器人 ID', v: '点「机器人群内状态」看 member_openid' }
+      { k: '群编号', v: gid },
+      { k: '说明', v: '需要填群 ID 时用这一串' }
     ])
   },
 
@@ -194,12 +340,16 @@ export default {
     this.busy = true
     get('/api/watch/members', { conversationId: this.cid }, (err, obj) => {
       if (err) {
-        this.setRows([{ k: '错误', v: String(err.msg || '读取成员失败') }])
+        this.setRows([
+          { k: '读不到成员', v: String(err.msg || '无法读取') },
+          { k: '原因', v: '官方成员接口需要白名单' },
+          { k: '替代', v: '先在群里发条消息，让我记住成员' }
+        ])
         return
       }
       const list = (obj && obj.members) || []
       if (!list.length) {
-        this.setRows([{ k: '提示', v: '暂无成员，先在群里发一条消息再试' }])
+        this.setRows([{ k: '没有成员', v: '先在群里发条消息' }])
         return
       }
       const out = []
@@ -207,33 +357,135 @@ export default {
         const m = list[i] || {}
         const oid = String(m.openid || m.memberOpenid || '')
         if (!oid) continue
-        out.push({ k: String(m.name || '成员').slice(0, 8), v: oid, clickable: true })
+        out.push({ k: String(m.name || '成员').slice(0, 8), v: '点这行选中', clickable: true, oid: oid, nm: String(m.name || '') })
       }
-      this.picking = true
-      this.setRows(out.length ? out : [{ k: '提示', v: '成员数据里没有 openid' }])
+      if (!out.length) {
+        this.setRows([{ k: '没有可选成员', v: '成员数据里没有编号' }])
+        return
+      }
+      this.pickMode = 'member'
+      this.viewRows = out
+      this.viewRows.push({ k: '‹ 返回', v: '点这行回上一页', isBack: true })
+      this.view = 'result'
+      this.busy = false
+      this.title = '选成员'
+      this.subtitle = '点一个人，后面的操作都用他'
+    })
+  },
+
+  pickStrategy() {
+    if (this.busy) return
+    this.busy = true
+    post('/api/watch/group/api', { action: 'strategies', conversationId: this.cid, tt: 0 }, (err, obj) => {
+      if (err) { this.setRows([{ k: '读取失败', v: String(err.msg || '失败') }]); return }
+      const raw = (obj && obj.raw) || {}
+      const list = raw.strategies || []
+      if (!list.length) {
+        this.setRows([{ k: '还没有规则', v: '先点「开启自动同意」创建一条' }])
+        return
+      }
+      this.pickMode = 'strategy'
+      this.viewRows = []
+      for (let i = 0; i < list.length; i++) {
+        const st = list[i] || {}
+        const id = String(st.strategy_id || '')
+        const label = String(st.remark || id.slice(0, 12))
+        this.viewRows.push({
+          k: label.slice(0, 8),
+          v: (st.is_enable === 'on' ? '启用中' : '已停用') + ' · 点这行选中',
+          clickable: true,
+          sid: id,
+          slabel: label
+        })
+      }
+      this.viewRows.push({ k: '‹ 返回', v: '点这行回上一页', isBack: true })
+      this.view = 'result'
+      this.busy = false
+      this.title = '选规则'
+      this.subtitle = '点一条规则'
+    })
+  },
+
+  pickApplicant(it) {
+    if (this.busy) return
+    this.busy = true
+    post('/api/watch/group/api', { action: 'join_requests', conversationId: this.cid, tt: 0 }, (err, obj) => {
+      if (err) { this.setRows([{ k: '读取失败', v: String(err.msg || '失败') }]); return }
+      const raw = (obj && obj.raw) || {}
+      const list = raw.requests || raw.join_requests || raw.list || []
+      if (!list.length) {
+        this.setRows([{ k: '没有待审批', v: '现在没人申请进群' }])
+        return
+      }
+      this.pickMode = 'applicant'
+      this.pendingItem = it
+      this.viewRows = []
+      for (let i = 0; i < list.length; i++) {
+        const r = list[i] || {}
+        const oid = String(r.member_openid || '')
+        if (!oid) continue
+        this.viewRows.push({
+          k: String(r.username || '申请人').slice(0, 8),
+          v: '点这行选他',
+          clickable: true,
+          oid: oid,
+          nm: String(r.username || '')
+        })
+      }
+      if (!this.viewRows.length) {
+        this.setRows([{ k: '没有可选申请人', v: '申请数据里没有成员编号' }])
+        return
+      }
+      this.viewRows.push({ k: '‹ 返回', v: '点这行回上一页', isBack: true })
+      this.view = 'result'
+      this.busy = false
+      this.title = '选申请人'
+      this.subtitle = '点一个人'
     })
   },
 
   tapRow(item) {
     if (!item) return
-    if (item.isBack) { this.backToMenu(); return }
-    if (item.clickable) this.useAsArg(item)
+    if (item.isBack) { this.backOne(); return }
+    if (item.confirmYes) {
+      const it = this.pendingItem
+      this.pendingItem = null
+      if (it) this.run(it)
+      return
+    }
+    if (this.pickMode === 'member') {
+      this.selMember = { openid: item.oid, name: item.nm }
+      this.finishPick(item.nm || '成员')
+      return
+    }
+    if (this.pickMode === 'strategy') {
+      this.selStrategy = { id: item.sid, label: item.slabel }
+      this.finishPick('规则')
+      return
+    }
+    if (this.pickMode === 'applicant') {
+      this.selApplicant = { openid: item.oid, name: item.nm }
+      this.finishPick(item.nm || '申请人')
+      return
+    }
   },
 
-  useAsArg(item) {
-    if (!item) return
-    if (item.isBack) { this.backToMenu(); return }
-    const v = String(item.v || item.k || '').trim()
-    if (!v || v === '—') return
-    this.backToMenu()
-    this.argText = v
-    this.argLabel = '参数'
-    toast('已填入参数：' + v.slice(0, 12))
+  finishPick(name) {
+    this.pickMode = ''
+    this.refreshSel()
+    this.view = 'items'
+    this.title = this.curGroup ? this.curGroup.label : '群管理'
+    this.subtitle = this.curGroup ? (this.curGroup.desc || '') : ''
+    this.viewRows = []
+    const it = this.pendingItem
+    this.pendingItem = null
+    toast('已选：' + name)
+    if (it) this.run(it)
   },
 
-  sendButtons(m) {
+  sendButtons(it) {
     if (this.busy) return
-    const p = BUTTON_PRESETS[m.preset] || BUTTON_PRESETS.vote
+    const p = BUTTON_PRESETS[it.preset] || BUTTON_PRESETS.vote
     this.busy = true
     post('/api/watch/buttons/send', {
       conversationId: this.cid,
@@ -241,64 +493,55 @@ export default {
       buttons: p.buttons,
       tt: 0
     }, (err) => {
-      if (err) { this.setRows([{ k: '错误', v: String(err.msg || '发送失败') }]); return }
-      this.setRows([{ k: '按钮消息', v: '已发送，QQ 端点按钮后聊天里会出提示' }])
-      toast('按钮消息已发出')
+      if (err) { this.setRows([{ k: '发送失败', v: String(err.msg || '失败') }]); return }
+      this.setRows([
+        { k: '已发出', v: p.text },
+        { k: '怎么看结果', v: 'QQ 里有人点按钮，聊天里会出现提示' }
+      ])
     })
   },
 
-  exec(m) {
-    if (!m) return
-    if (m.action === 'local_gid') { this.localGid(); return }
-    if (m.action === 'pick_member') { this.pickMember(); return }
-    if (m.action === 'buttons_send') { this.sendButtons(m); return }
-    if (m.arg && !this.argText) {
-      this.pending = m
-      this.argLabel = m.arg
-      this.editArg()
-      return
-    }
-    this.run(m)
-  },
-
-  run(m) {
+  run(it) {
     if (this.busy) return
     this.busy = true
-    this.showMenu = false
-    this.showResult = false
     const payload = {
-      action: m.action,
+      action: it.action,
       conversationId: this.cid,
-      memberOpenid: this.argText,
-      seconds: m.seconds || 0,
-      blacklist: !!m.blacklist,
-      decision: m.decision || 'approve',
-      memberAction: m.memberAction || '',
       tt: 0
     }
-    if (String(m.action).indexOf('strategy_') === 0 && m.action !== 'strategies' && m.action !== 'strategy_create') {
-      const parts = String(this.argText || '').split(',')
-      payload.strategyId = (parts[0] || '').trim()
-      if (m.qq) payload.qqs = (parts[1] || '').trim() ? [(parts[1] || '').trim()] : []
-      if (m.action === 'strategy_patch') payload.patch = { is_enable: 'off' }
-      payload.op = 'add'
+    if (it.memberAction) {
+      payload.memberAction = it.memberAction
+      payload.memberOpenid = this.selMember ? this.selMember.openid : ''
+      payload.seconds = it.seconds || 0
+      payload.blacklist = !!it.blacklist
+    }
+    if (it.action === 'approve') {
+      payload.memberOpenid = this.selApplicant ? this.selApplicant.openid : ''
+      payload.decision = it.decision || 'approve'
+    }
+    if (String(it.action).indexOf('strategy_') === 0 && it.action !== 'strategy_create') {
+      payload.strategyId = this.selStrategy ? this.selStrategy.id : ''
+      if (it.action === 'strategy_patch') payload.patch = { is_enable: 'off' }
     }
     post('/api/watch/group/api', payload, (err, obj) => {
       if (err) {
-        if (err.code === 'AUTH') { replace('Login'); return }
-        this.setRows([{ k: '错误', v: String(err.msg || '请求失败').slice(0, 40) }])
-        toast(err.msg || '请求失败')
+        const msg = String(err.msg || '操作失败')
+        const rows = [{ k: '没成功', v: msg.slice(0, 40) }]
+        if (msg.indexOf('11253') >= 0 || msg.indexOf('白名单') >= 0) {
+          rows.push({ k: '原因', v: '这个接口要向 QQ 平台申请白名单' })
+          rows.push({ k: '怎么申请', v: '邮箱 qq_open@tencent.com' })
+          rows.push({ k: '现在能用', v: '禁言、按钮消息、看群编号' })
+        } else if (msg.indexOf('管理员') >= 0) {
+          rows.push({ k: '原因', v: '机器人不是群管理员' })
+          rows.push({ k: '怎么办', v: '在 QQ 群里把机器人设为管理员' })
+        }
+        this.setRows(rows)
         return
       }
-      this.setRows((obj && obj.rows) || [{ k: '结果', v: '成功' }])
-      if (m.action === 'strategy_create' || m.action === 'strategy_patch' || m.action === 'strategy_delete') {
-        toast('操作成功')
-      }
+      const rows = this.humanRows((obj && obj.rows) || [])
+      if (!rows.length) rows.push({ k: '完成', v: '操作已执行' })
+      this.setRows(rows)
     })
-  },
-
-  goBack() {
-    back()
   }
 }
 </script>
@@ -308,19 +551,19 @@ export default {
 .head { width: 336px; height: 56px; flex-direction: row; align-items: center; padding-left: 12px; padding-right: 12px; border-bottom-width: 1px; border-bottom-color: #333333; }
 .h-back { width: 40px; font-size: 32px; color: #3184d0; }
 .h-mid { flex-grow: 1; flex-direction: column; justify-content: center; }
-.h-title { font-size: 23px; color: #ffffff; font-weight: bold; }
+.h-title { font-size: 21px; color: #ffffff; font-weight: bold; }
 .h-ver { font-size: 11px; color: #5f7185; }
-.h-right { width: 56px; font-size: 17px; color: #3184d0; text-align: right; }
-.arg { width: 336px; height: 34px; padding-left: 12px; padding-right: 12px; background-color: #14202c; justify-content: center; }
-.arg-t { font-size: 14px; color: #7fb2e5; lines: 1; text-overflow: ellipsis; }
+.h-right { width: 44px; font-size: 15px; color: #7f8b99; text-align: right; }
+.selbar { width: 336px; height: 32px; padding-left: 12px; padding-right: 12px; background-color: #14202c; justify-content: center; }
+.sel-t { font-size: 13px; color: #7fb2e5; lines: 1; text-overflow: ellipsis; }
 .tip { width: 336px; height: 60px; align-items: center; justify-content: center; }
 .tip-t { font-size: 18px; color: #8fa3bd; }
 .menu { width: 336px; }
 .result { width: 336px; }
-.cell { width: 336px; height: 60px; flex-direction: column; justify-content: center; padding-left: 14px; padding-right: 14px; border-bottom-width: 1px; border-bottom-color: #222222; }
+.cell { width: 336px; height: 62px; flex-direction: column; justify-content: center; padding-left: 14px; padding-right: 14px; border-bottom-width: 1px; border-bottom-color: #222222; }
 .cell-t { font-size: 18px; color: #e8e8e8; }
 .cell-s { font-size: 13px; color: #7a8797; }
-.rrow { width: 336px; height: 46px; flex-direction: row; align-items: center; padding-left: 12px; padding-right: 12px; border-bottom-width: 1px; border-bottom-color: #1c1c1c; }
-.rk { width: 130px; font-size: 13px; color: #8fa3bd; lines: 1; text-overflow: ellipsis; }
+.rrow { width: 336px; height: 48px; flex-direction: row; align-items: center; padding-left: 12px; padding-right: 12px; border-bottom-width: 1px; border-bottom-color: #1c1c1c; }
+.rk { width: 120px; font-size: 13px; color: #8fa3bd; lines: 1; text-overflow: ellipsis; }
 .rv { flex-grow: 1; font-size: 13px; color: #d8e2ee; lines: 2; text-overflow: ellipsis; }
 </style>
