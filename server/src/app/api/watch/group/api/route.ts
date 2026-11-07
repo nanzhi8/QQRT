@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { messages } from "@/db/schema";
 import { and, desc, eq } from "drizzle-orm";
 import { fail, ok, readJson, requireUser } from "@/server/httpUtil";
-import { parseConversationId } from "@/server/repo";
+import { listJoinRequests, parseConversationId } from "@/server/repo";
 import {
   getGroupInfo,
   getBotState,
@@ -39,6 +39,7 @@ type Req = {
   op?: "add" | "del";
   qqs?: string[];
   reason?: string;
+  joinRequestId?: string;
   decision?: "approve" | "decline";
   remark?: string;
 };
@@ -146,7 +147,20 @@ export async function POST(req: Request) {
       case "op": break;
       case "approve": {
         if (!memberOpenid) throw appError("INVALID_REQUEST", "缺少申请人 ID", "");
-        r = await approveJoinRequest(user.id, g, memberOpenid, b.decision === "decline" ? "decline" : "approve", b.reason);
+        // join_request_id 官方建议带上；手表没传就从本地申请记录里补
+        let joinRequestId = String(b.joinRequestId || "").trim();
+        if (!joinRequestId) {
+          const reqs = await listJoinRequests(user.id);
+          const hit = reqs.find((x) => x.memberOpenid === memberOpenid && x.groupOpenid === g && x.status === "pending");
+          joinRequestId = hit?.joinRequestId ?? "";
+        }
+        r = await approveJoinRequest(
+          user.id,
+          g,
+          memberOpenid,
+          b.decision === "decline" ? "decline" : "approve",
+          { joinRequestId: joinRequestId || undefined, reason: b.reason, blacklist: !!b.blacklist },
+        );
         break;
       }
       default: throw appError("INVALID_REQUEST", "不支持的操作：" + action, "");

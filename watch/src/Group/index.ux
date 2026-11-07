@@ -435,7 +435,8 @@ export default {
           v: '点这行选他',
           clickable: true,
           oid: oid,
-          nm: String(r.username || '')
+          nm: String(r.username || ''),
+          jid: String(r.join_request_id || '')
         })
       }
       if (!this.viewRows.length) {
@@ -470,7 +471,7 @@ export default {
       return
     }
     if (this.pickMode === 'applicant') {
-      this.selApplicant = { openid: item.oid, name: item.nm }
+      this.selApplicant = { openid: item.oid, name: item.nm, jid: item.jid || '' }
       this.finishPick(item.nm || '这位')
       return
     }
@@ -524,6 +525,7 @@ export default {
     if (it.action === 'approve') {
       payload.memberOpenid = this.selApplicant ? this.selApplicant.openid : ''
       payload.decision = it.decision || 'approve'
+      payload.joinRequestId = this.selApplicant ? (this.selApplicant.jid || '') : ''
     }
     if (String(it.action).indexOf('strategy_') === 0 && it.action !== 'strategy_create') {
       payload.strategyId = this.selStrategy ? this.selStrategy.id : ''

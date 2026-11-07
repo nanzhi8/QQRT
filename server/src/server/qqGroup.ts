@@ -182,18 +182,27 @@ export async function runGroupOp(userId: string, groupOpenid: string, op: GroupO
   });
 }
 
-/** 入群申请审批 */
+/**
+ * 入群申请审批（官方：op 必填，不是 action）
+ *   POST /v2/groups/{group_openid}/approval_join_request/{member_openid}
+ *   body { op: "approve"|"decline", join_request_id?, reject_reason?, add_to_member_blacklist? }
+ */
 export function approveJoinRequest(
   userId: string,
   g: string,
   memberOpenid: string,
-  action: "approve" | "decline",
-  reason?: string,
+  op: "approve" | "decline",
+  opts: { joinRequestId?: string; reason?: string; blacklist?: boolean } = {},
 ) {
   return call(userId, (bot) =>
     bot.api.post(
       `/v2/groups/${encodeURIComponent(g)}/approval_join_request/${encodeURIComponent(memberOpenid)}`,
-      { action, ...(reason ? { reason } : {}) },
+      {
+        op,
+        ...(opts.joinRequestId ? { join_request_id: opts.joinRequestId } : {}),
+        ...(op === "decline" && opts.reason ? { reject_reason: opts.reason } : {}),
+        ...(op === "decline" && opts.blacklist ? { add_to_member_blacklist: true } : {}),
+      },
     ),
   );
 }
