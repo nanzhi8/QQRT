@@ -331,39 +331,52 @@ export default {
   pickMember() {
     if (this.busy) return
     this.busy = true
+    // 先问服务端「最近在群里说过话的人」——纯本地数据，不需要白名单权限。
+    post('/api/watch/group/api', { action: 'recent_senders', conversationId: this.cid, tt: 0 }, (err, obj) => {
+      const recent = (!err && obj && obj.members) ? obj.members : []
+      if (recent.length) { this.showMemberList(recent, '最近在群里说过话的人'); return }
+      this.pickMemberOfficial()
+    })
+  },
+
+  pickMemberOfficial() {
     get('/api/watch/members', { conversationId: this.cid }, (err, obj) => {
       if (err) {
         this.setRows([
-          { k: '看不到名单', v: 'QQ 没把成员名单给我' },
-          { k: '为什么', v: '这个功能要先去 QQ 开放平台申请权限' },
-          { k: '现在怎么办', v: '在群里 @ 我发条消息，我再试试' }
+          { k: '选不了人', v: '群里还没人说过话，我也拿不到名单' },
+          { k: '怎么办', v: '让想处理的人在群里发句话，再回来点' },
+          { k: '另一条路', v: '去 QQ 开放平台申请成员权限' }
         ])
         return
       }
       const list = (obj && obj.members) || []
       if (!list.length) {
-        this.setRows([{ k: '名单是空的', v: '先在群里发条消息，我才能记住人' }])
+        this.setRows([{ k: '名单是空的', v: '先让群里有人说句话' }])
         return
       }
-      const out = []
-      for (let i = 0; i < list.length; i++) {
-        const m = list[i] || {}
-        const oid = String(m.openid || m.memberOpenid || '')
-        if (!oid) continue
-        out.push({ k: String(m.name || '没名字的成员').slice(0, 8), v: '点这行选他', clickable: true, oid: oid, nm: String(m.name || '') })
-      }
-      if (!out.length) {
-        this.setRows([{ k: '没有可选的人', v: '名单里没有可用的成员' }])
-        return
-      }
-      this.pickMode = 'member'
-      this.viewRows = out
-      this.viewRows.push({ k: '‹ 回去', v: '点这行回上一页', isBack: true })
-      this.view = 'result'
-      this.busy = false
-      this.title = '选一个人'
-      this.subtitle = '点谁，后面的操作就对他'
+      this.showMemberList(list, '群成员')
     })
+  },
+
+  showMemberList(list, sub) {
+    const out = []
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i] || {}
+      const oid = String(m.openid || m.memberOpenid || '')
+      if (!oid) continue
+      out.push({ k: String(m.name || '没名字的成员').slice(0, 8), v: '点这行选他', clickable: true, oid: oid, nm: String(m.name || '') })
+    }
+    if (!out.length) {
+      this.setRows([{ k: '没有可选的人', v: '名单里没有可用的成员' }])
+      return
+    }
+    this.pickMode = 'member'
+    this.viewRows = out
+    this.viewRows.push({ k: '‹ 回去', v: '点这行回上一页', isBack: true })
+    this.view = 'result'
+    this.busy = false
+    this.title = '选一个人'
+    this.subtitle = sub || '点谁，后面的操作就对他'
   },
 
   pickStrategy() {

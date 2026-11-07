@@ -1,4 +1,7 @@
 import { appError } from "@/lib/errors";
+import { db } from "@/db";
+import { messages } from "@/db/schema";
+import { and, desc, eq } from "drizzle-orm";
 import { fail, ok, readJson, requireUser } from "@/server/httpUtil";
 import { parseConversationId } from "@/server/repo";
 import {
@@ -97,6 +100,36 @@ export async function POST(req: Request) {
 
     // 以下都需要群聊会话
     if (!g) throw appError("INVALID_REQUEST", "仅群聊支持该操作（缺少有效的群会话 ID）", "");
+
+    /**
+     * 从本地消息里捞「最近说过话的人」。
+     * 官方成员列表接口需要 11253 白名单，没开通时手表就选不了人、也就没法禁言。
+     * 这个动作纯查本地库，不依赖任何官方权限。
+     */
+    if (action === "recent_senders") {
+      const rows = await db
+        .select({ senderId: messages.senderId, senderName: messages.senderName })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.userId, user.id),
+            eq(messages.conversationId, conversationId),
+            eq(messages.direction, "in"),
+          ),
+        )
+        .orderBy(desc(messages.seq))
+        .limit(300);
+      const seen = new Set<string>();
+      const out: Array<{ openid: string; name: string }> = [];
+      for (const r of rows) {
+        const id = String(r.senderId ?? "");
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        out.push({ openid: id, name: String(r.senderName ?? "") });
+        if (out.length >= 50) break;
+      }
+      return ok({ members: out, source: "recent" });
+    }
 
     let r: unknown;
     switch (action) {
