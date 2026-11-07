@@ -52,6 +52,13 @@ function explain(e: unknown): Error {
   if (/频繁|频率|too many|rate limit/i.test(reason)) {
     return new Error("操作太频繁了，等 1 分钟再试");
   }
+  // 4.5) 撤回相关
+  if (/40064004|超出消息撤回时限/.test(raw) || /超过2分钟|撤回时限/.test(reason)) {
+    return new Error("这条消息发出超过 2 分钟了，撤不回来");
+  }
+  if (/40062003|无操作权限/.test(raw)) {
+    return new Error("我没权限撤回这条：需要群管理员，或者只能撤回我自己发的");
+  }
   // 5) 403
   if (/403|forbidden/i.test(raw)) {
     return new Error("QQ 拒绝了这个请求：我在这个群权限不够");
@@ -178,6 +185,34 @@ export async function runGroupOp(userId: string, groupOpenid: string, op: GroupO
       op: op === "blacklist" ? "add" : "del",
       member_openids: [member],
     });
+    return { ok: true };
+  });
+}
+
+/**
+ * 全员禁言开关（官方 global_rule）
+ *   POST /v2/groups/{g}/restrict_chat_setting
+ *   body { global_rule: { mode: "all"|"none", schedule_rules: [], recurring_rules: [] } }
+ */
+export function setGlobalMute(userId: string, g: string, on: boolean) {
+  return call(userId, async (bot) => {
+    await bot.api.post(`/v2/groups/${encodeURIComponent(g)}/restrict_chat_setting`, {
+      global_rule: { mode: on ? "all" : "none", schedule_rules: [], recurring_rules: [] },
+    });
+    return { ok: true };
+  });
+}
+
+/**
+ * 撤回群消息（官方是 DELETE，不是 POST recall）
+ *   DELETE /v2/groups/{group_openid}/messages/{message_id}
+ *   限制：只能撤 2 分钟内的；机器人需是管理员，或该消息是机器人自己发的
+ */
+export function recallGroupMessage(userId: string, g: string, messageId: string) {
+  return call(userId, async (bot) => {
+    await bot.api.delete(
+      `/v2/groups/${encodeURIComponent(g)}/messages/${encodeURIComponent(messageId)}`,
+    );
     return { ok: true };
   });
 }

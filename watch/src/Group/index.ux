@@ -58,16 +58,28 @@ const GROUPS = [
   {
     key: 'member',
     label: '让某个人安静',
-    desc: '禁言、踢出群、不许他再进',
+    desc: '禁言、恢复说话',
     items: [
-      { label: '先点一个人', hint: '从群名单里点，后面都对他生效', action: 'pick_member' },
+      { label: '先点一个人', hint: '从最近发言的人里点，后面都对他生效', action: 'pick_member' },
       { label: '让他 10 分钟不能说话', hint: '时间到了自动恢复', action: 'op', memberAction: 'mute', seconds: 600, needMember: true, done: '他 10 分钟内不能说话了' },
-      { label: '让他重新能说话', hint: '提前解除禁言', action: 'op', memberAction: 'unmute', needMember: true, done: '他恢复说话了' },
-      { label: '把他踢出群', hint: '踢出去，以后还能再申请', action: 'op', memberAction: 'kick', needMember: true, danger: true, done: '已把他踢出群' },
-      { label: '踢出去，不许再进', hint: '踢人 + 拉黑，最狠的一档', action: 'op', memberAction: 'kick', blacklist: true, needMember: true, danger: true, done: '已踢出并禁止他再进群' },
-      { label: '看谁被拉黑了', hint: '被禁止进群的人', action: 'blacklist' },
-      { label: '不许他再进群', hint: '不踢人，只是挡住以后', action: 'op', memberAction: 'blacklist', needMember: true, danger: true, done: '已禁止他再进群' },
-      { label: '允许他重新进群', hint: '把他从黑名单里放出来', action: 'op', memberAction: 'unblacklist', needMember: true, done: '已允许他重新进群' }
+      { label: '让他重新能说话', hint: '提前解除禁言', action: 'op', memberAction: 'unmute', needMember: true, done: '他恢复说话了' }
+    ]
+  },
+  {
+    key: 'quiet',
+    label: '群里太吵了',
+    desc: '一键全员禁言 / 恢复',
+    items: [
+      { label: '全部人都不许说话', hint: '一键全员禁言', action: 'mute_all', enabled: true, danger: true, done: '已开启全员禁言' },
+      { label: '恢复正常发言', hint: '解除全员禁言', action: 'mute_all', enabled: false, done: '已解除全员禁言' }
+    ]
+  },
+  {
+    key: 'recall',
+    label: '撤回群消息',
+    desc: '把发错的消息删掉',
+    items: [
+      { label: '选一条消息撤回', hint: '列出最近 30 条，点哪条撤哪条', action: 'pick_message' }
     ]
   },
   {
@@ -176,6 +188,7 @@ export default {
     selMember: null,
     selStrategy: null,
     selApplicant: null,
+    selMessage: null,
     pickMode: '',
     pendingItem: null,
     curGroup: null
@@ -360,6 +373,7 @@ export default {
     if (!it) return
     if (it.action === 'local_gid') { this.localGid(); return }
     if (it.action === 'pick_member') { this.pickMember(); return }
+    if (it.action === 'pick_message') { this.pickMessage(); return }
     if (it.action === 'buttons_send') { this.sendButtons(it); return }
 
     if (it.needMember && !this.selMember) {
@@ -384,7 +398,9 @@ export default {
   },
 
   confirm(it) {
-    const who = it.needMember && this.selMember
+    const who = it.needMessage && this.selMessage
+      ? this.selMessage.preview
+      : it.needMember && this.selMember
       ? (this.selMember.name || '这位成员')
       : (it.needStrategy && this.selStrategy ? (this.selStrategy.label || '这条规则') : '')
     this.pendingItem = it
@@ -404,6 +420,48 @@ export default {
       { k: '这个群的编号', v: gid },
       { k: '什么时候用', v: '别人要你填「群 ID」时，给他这一串' }
     ])
+  },
+
+  agoText(ts) {
+    const t = Number(ts || 0)
+    if (!t) return ''
+    const min = Math.floor((Date.now() - t) / 60000)
+    if (min < 1) return '刚刚'
+    if (min > 120) return '太久撤不了'
+    return min + ' 分钟前'
+  },
+
+  pickMessage() {
+    if (this.busy) return
+    this.busy = true
+    post('/api/watch/group/api', { action: 'recent_messages', conversationId: this.cid, tt: 0 }, (err, obj) => {
+      if (err) {
+        this.setRows([{ k: '读不到消息', v: String(err.msg || '失败') }])
+        return
+      }
+      const list = (obj && obj.messages) || []
+      if (!list.length) {
+        this.setRows([{ k: '这个群还没聊过天', v: '没有可撤回的消息' }])
+        return
+      }
+      this.pickMode = 'message'
+      this.viewRows = []
+      for (let i = 0; i < list.length; i++) {
+        const m = list[i] || {}
+        this.viewRows.push({
+          k: String(m.senderName || '有人').slice(0, 6),
+          v: String(m.text || '[非文字消息]').slice(0, 12) + ' · ' + this.agoText(m.createdAt),
+          clickable: true,
+          mid: m.id,
+          qq: m.qqMessageId
+        })
+      }
+      this.viewRows.push({ k: '‹ 回去', v: '点这行回上一页', isBack: true })
+      this.view = 'result'
+      this.busy = false
+      this.title = '选一条消息'
+      this.subtitle = '点哪条就撤回哪条'
+    })
   },
 
   pickMember() {
@@ -538,6 +596,12 @@ export default {
       if (it) this.run(it)
       return
     }
+    if (this.pickMode === 'message') {
+      this.selMessage = { id: item.mid, qq: item.qq, preview: item.v }
+      this.pickMode = ''
+      this.confirm({ action: 'recall', label: '撤回这条消息', needMessage: true, danger: true, done: '消息已撤回' })
+      return
+    }
     if (this.pickMode === 'member') {
       this.selMember = { openid: item.oid, name: item.nm }
       this.finishPick(item.nm || '这位成员')
@@ -599,6 +663,11 @@ export default {
       payload.memberOpenid = this.selMember ? this.selMember.openid : ''
       payload.seconds = it.seconds || 0
       payload.blacklist = !!it.blacklist
+    }
+    if (it.action === 'mute_all') payload.enabled = !!it.enabled
+    if (it.action === 'recall') {
+      payload.messageId = this.selMessage ? this.selMessage.id : ''
+      payload.qqMessageId = this.selMessage ? this.selMessage.qq : ''
     }
     if (it.action === 'approve') {
       payload.memberOpenid = this.selApplicant ? this.selApplicant.openid : ''
