@@ -81,27 +81,13 @@ const GROUPS = [
     ]
   },
   {
-    key: 'notify',
-    label: '发个通知到群里',
-    desc: '带按钮的消息，点一下就有反馈',
-    items: [
-      { label: '发个投票', hint: '三个选项，谁点了我能看到', action: 'buttons_send', preset: 'vote', done: '投票已发到群里' },
-      { label: '发个签到', hint: '群里会出现「签到」按钮', action: 'buttons_send', preset: 'checkin', done: '签到已发到群里' },
-      { label: '发个同意/拒绝', hint: '两个按钮，适合征求意见', action: 'buttons_send', preset: 'approve', done: '审批按钮已发到群里' }
-    ]
-  },
-  {
     key: 'join',
     label: '处理进群申请',
     desc: '谁要进来，同意还是拒绝',
     items: [
       { label: '谁在申请进群', hint: '看看有哪些人想进来', action: 'join_requests' },
       { label: '同意一个人进来', hint: '从申请名单里点他', action: 'approve', decision: 'approve', needApplicant: true, done: '已同意他进群' },
-      { label: '拒绝一个人', hint: '从申请名单里点他', action: 'approve', decision: 'decline', needApplicant: true, danger: true, done: '已拒绝他的申请' },
-      { label: '以后自动同意', hint: '设好规则，不用每次手动点', action: 'strategy_create', done: '已开启自动同意进群' },
-      { label: '看现有的自动规则', hint: '当前生效的规则', action: 'strategies' },
-      { label: '关掉自动同意', hint: '先选一条规则', action: 'strategy_patch', needStrategy: true, danger: true, done: '规则已停用' },
-      { label: '删掉一条规则', hint: '先选一条规则', action: 'strategy_delete', needStrategy: true, danger: true, done: '规则已删除' }
+      { label: '拒绝一个人', hint: '从申请名单里点他', action: 'approve', decision: 'decline', needApplicant: true, danger: true, done: '已拒绝他的申请' }
     ]
   }
 ]
