@@ -1,6 +1,10 @@
 import { appError } from "@/lib/errors";
+import { bus } from "@/lib/bus";
+import { db } from "@/db";
+import { joinRequests, messages } from "@/db/schema";
+import { and, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { fail, ok, readJson, requireUser } from "@/server/httpUtil";
-import { parseConversationId } from "@/server/repo";
+import { parseConversationId, updateJoinRequestStatus } from "@/server/repo";
 import {
   getGroupInfo,
   getBotState,
@@ -17,6 +21,8 @@ import {
   strategyWhitelist,
   runGroupOp,
   approveJoinRequest,
+  setGlobalMute,
+  recallGroupMessage,
   type GroupOp,
 } from "@/server/qqGroup";
 
@@ -36,6 +42,10 @@ type Req = {
   op?: "add" | "del";
   qqs?: string[];
   reason?: string;
+  joinRequestId?: string;
+  enabled?: boolean;
+  messageId?: string;
+  qqMessageId?: string;
   decision?: "approve" | "decline";
   remark?: string;
 };
@@ -87,7 +97,7 @@ export async function POST(req: Request) {
     if (action === "strategy_patch" || action === "strategy_delete" || action === "strategy_execute" || action === "strategy_whitelist") {
       const id = String(b.strategyId || "").trim();
       if (!id) throw appError("INVALID_REQUEST", "缺少策略 ID", "");
-      let r: unknown;
+    let r: unknown;
       if (action === "strategy_patch") r = await patchStrategy(user.id, id, b.patch || {});
       else if (action === "strategy_delete") r = await deleteStrategy(user.id, id);
       else if (action === "strategy_execute") r = await executeStrategy(user.id, id);
@@ -97,6 +107,62 @@ export async function POST(req: Request) {
 
     // 以下都需要群聊会话
     if (!g) throw appError("INVALID_REQUEST", "仅群聊支持该操作（缺少有效的群会话 ID）", "");
+
+    /**
+     * 从本地消息里捞「最近说过话的人」。
+     * 官方成员列表接口需要 11253 白名单，没开通时手表就选不了人、也就没法禁言。
+     * 这个动作纯查本地库，不依赖任何官方权限。
+     */
+    if (action === "recent_messages") {
+      const rows = await db
+        .select({
+          id: messages.id,
+          senderName: messages.senderName,
+          text: messages.text,
+          msgType: messages.msgType,
+          qqMessageId: messages.qqMessageId,
+          createdAt: messages.createdAt,
+        })
+        .from(messages)
+        .where(and(eq(messages.userId, user.id), eq(messages.conversationId, conversationId)))
+        .orderBy(desc(messages.seq))
+        .limit(30);
+      return ok({
+        messages: rows.map((m) => ({
+          id: m.id,
+          senderName: m.senderName || "",
+          text: m.text || (m.msgType === "text" ? "" : "[" + m.msgType + "]"),
+          msgType: m.msgType,
+          qqMessageId: m.qqMessageId || "",
+          createdAt: m.createdAt,
+        })),
+      });
+    }
+
+    if (action === "recent_senders") {
+      const rows = await db
+        .select({ senderId: messages.senderId, senderName: messages.senderName })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.userId, user.id),
+            eq(messages.conversationId, conversationId),
+            eq(messages.direction, "in"),
+          ),
+        )
+        .orderBy(desc(messages.seq))
+        .limit(300);
+      const seen = new Set<string>();
+      const out: Array<{ openid: string; name: string }> = [];
+      for (const r of rows) {
+        const id = String(r.senderId ?? "");
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        out.push({ openid: id, name: String(r.senderName ?? "") });
+        if (out.length >= 50) break;
+      }
+      return ok({ members: out, source: "recent" });
+    }
 
     let r: unknown;
     switch (action) {
@@ -111,9 +177,49 @@ export async function POST(req: Request) {
       }
       case "blacklist": r = await getBlacklist(user.id, g, String(b.cursor || ""), Number(b.limit) || 20); break;
       case "op": break;
+      case "mute_all": {
+        r = await setGlobalMute(user.id, g, b.enabled !== false);
+        break;
+      }
+
+      case "recall": {
+        let qqId = String(b.qqMessageId || "").trim();
+        const localId = String(b.messageId || "").trim();
+        if (!qqId && localId) {
+          const rows = await db
+            .select({ qq: messages.qqMessageId })
+            .from(messages)
+            .where(and(eq(messages.userId, user.id), eq(messages.id, localId)))
+            .limit(1);
+          qqId = String(rows[0]?.qq || "");
+        }
+        if (!qqId) throw appError("INVALID_REQUEST", "这条消息没有可撤回的编号（可能太旧）", "换一条试试");
+        r = await recallGroupMessage(user.id, g, qqId);
+        break;
+      }
+
       case "approve": {
         if (!memberOpenid) throw appError("INVALID_REQUEST", "缺少申请人 ID", "");
-        r = await approveJoinRequest(user.id, g, memberOpenid, b.decision === "decline" ? "decline" : "approve", b.reason);
+        // join_request_id 官方建议带上；手表没传就从本地申请记录里补
+        let joinRequestId = String(b.joinRequestId || "").trim();
+        const [hit] = await db.select().from(joinRequests).where(and(
+          eq(joinRequests.userId, user.id), eq(joinRequests.groupOpenid, g),
+          eq(joinRequests.memberOpenid, memberOpenid), eq(joinRequests.status, "pending"),
+          ...(joinRequestId ? [or(eq(joinRequests.joinRequestId, joinRequestId), isNull(joinRequests.joinRequestId))] : []),
+        )).orderBy(desc(sql<number>`case when ${joinRequests.joinRequestId} = ${joinRequestId} then 1 else 0 end`), desc(joinRequests.createdAt)).limit(1);
+        if (!joinRequestId) joinRequestId = hit?.joinRequestId ?? "";
+        const decision = b.decision === "decline" ? "decline" : "approve";
+        r = await approveJoinRequest(
+          user.id,
+          g,
+          memberOpenid,
+          decision,
+          { joinRequestId: joinRequestId || undefined, reason: b.reason, blacklist: !!b.blacklist },
+        );
+        if (hit) {
+          const updated = await updateJoinRequestStatus(user.id, hit.id, decision === "approve" ? "approved" : "declined");
+          if (updated) bus.emit(user.id, "join_request", updated);
+        }
         break;
       }
       default: throw appError("INVALID_REQUEST", "不支持的操作：" + action, "");

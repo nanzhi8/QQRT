@@ -29,10 +29,42 @@ function rfc3339After(seconds: number): string {
 }
 
 function explain(e: unknown): Error {
-  const msg = e instanceof Error ? e.message : String(e);
-  if (/11253/.test(msg)) return new Error("该接口仅白名单机器人可用，需向 QQ 开放平台申请「群成员管理」权限");
-  if (/403|forbidden|权限/i.test(msg)) return new Error("机器人不是该群管理员，无法执行此操作");
-  return new Error(msg || "操作失败");
+  const raw = e instanceof Error ? e.message : String(e);
+  // 官方 SDK 形如：API Error [/v2/groups/xxx/members]: 应用无接口访问权限
+  const m = raw.match(/API Error \[([^\]]*)\]:\s*([\s\S]+)$/);
+  const reason = m ? m[2].trim() : raw;
+
+  // 1) 白名单：必须排在「权限」之前，否则「无接口访问权限」会被误判成「不是管理员」
+  if (/11253/.test(raw) || /无接口访问权限|仅白名单|白名单机器人/.test(reason)) {
+    return new Error(
+      "QQ 不让我做这个操作：该接口只对申请过白名单的机器人开放，需发邮件到 qq_open@tencent.com 申请「群成员管理」权限",
+    );
+  }
+  // 2) 真的不是管理员
+  if (/不是该群管理员|非群管理员|机器人.*管理员/.test(reason)) {
+    return new Error("我在这个群没有管理员身份，请先在 QQ 群里把我设为管理员");
+  }
+  // 3) 群/资源不存在
+  if (/不存在|已注销|已解散|已退出/.test(reason)) {
+    return new Error("找不到这个群：可能我已经被移出，或群已解散");
+  }
+  // 4) 频率限制
+  if (/频繁|频率|too many|rate limit/i.test(reason)) {
+    return new Error("操作太频繁了，等 1 分钟再试");
+  }
+  // 4.5) 撤回相关
+  if (/40064004|超出消息撤回时限/.test(raw) || /超过2分钟|撤回时限/.test(reason)) {
+    return new Error("这条消息发出超过 2 分钟了，撤不回来");
+  }
+  if (/40062003|无操作权限/.test(raw)) {
+    return new Error("我没权限撤回这条：需要群管理员，或者只能撤回我自己发的");
+  }
+  // 5) 403
+  if (/403|forbidden/i.test(raw)) {
+    return new Error("QQ 拒绝了这个请求：我在这个群权限不够");
+  }
+  const clean = reason.replace(/\s+/g, " ").slice(0, 80);
+  return new Error(clean || "操作失败");
 }
 
 async function call<T>(userId: string, fn: (bot: ReturnType<typeof requireBot>) => Promise<T>): Promise<T> {
@@ -157,18 +189,55 @@ export async function runGroupOp(userId: string, groupOpenid: string, op: GroupO
   });
 }
 
-/** 入群申请审批 */
+/**
+ * 全员禁言开关（官方 global_rule）
+ *   POST /v2/groups/{g}/restrict_chat_setting
+ *   body { global_rule: { mode: "all"|"none", schedule_rules: [], recurring_rules: [] } }
+ */
+export function setGlobalMute(userId: string, g: string, on: boolean) {
+  return call(userId, async (bot) => {
+    await bot.api.post(`/v2/groups/${encodeURIComponent(g)}/restrict_chat_setting`, {
+      global_rule: { mode: on ? "all" : "none", schedule_rules: [], recurring_rules: [] },
+    });
+    return { ok: true };
+  });
+}
+
+/**
+ * 撤回群消息（官方是 DELETE，不是 POST recall）
+ *   DELETE /v2/groups/{group_openid}/messages/{message_id}
+ *   限制：只能撤 2 分钟内的；机器人需是管理员，或该消息是机器人自己发的
+ */
+export function recallGroupMessage(userId: string, g: string, messageId: string) {
+  return call(userId, async (bot) => {
+    await bot.api.delete(
+      `/v2/groups/${encodeURIComponent(g)}/messages/${encodeURIComponent(messageId)}`,
+    );
+    return { ok: true };
+  });
+}
+
+/**
+ * 入群申请审批（官方：op 必填，不是 action）
+ *   POST /v2/groups/{group_openid}/approval_join_request/{member_openid}
+ *   body { op: "approve"|"decline", join_request_id?, reject_reason?, add_to_member_blacklist? }
+ */
 export function approveJoinRequest(
   userId: string,
   g: string,
   memberOpenid: string,
-  action: "approve" | "decline",
-  reason?: string,
+  op: "approve" | "decline",
+  opts: { joinRequestId?: string; reason?: string; blacklist?: boolean } = {},
 ) {
   return call(userId, (bot) =>
     bot.api.post(
       `/v2/groups/${encodeURIComponent(g)}/approval_join_request/${encodeURIComponent(memberOpenid)}`,
-      { action, ...(reason ? { reason } : {}) },
+      {
+        op,
+        ...(opts.joinRequestId ? { join_request_id: opts.joinRequestId } : {}),
+        ...(op === "decline" && opts.reason ? { reject_reason: opts.reason } : {}),
+        ...(op === "decline" && opts.blacklist ? { add_to_member_blacklist: true } : {}),
+      },
     ),
   );
 }
