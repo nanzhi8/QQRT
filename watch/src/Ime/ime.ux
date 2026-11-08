@@ -40,6 +40,9 @@ export default {
   },
 
   onInit() {
+    // 诊断打点（定位 S 系列闪退）：ime-init = 页面创建成功；
+    // ime-ok = 初始化完成；IME初始化异常: xxx = onInit 内部报错原文。
+    try { toast('ime-init') } catch (e0) {}
     // 诊断 + 韧性（4.12.4）：初始化任何一步抛异常都不允许闪退，
     // 改为 toast 显示错误文字（用户可截图回报，精确定位）。
     try {
@@ -54,6 +57,7 @@ export default {
       if (global.deviceProfile) this._unsubscribeDevice = global.deviceProfile.subscribe(() => {
         this.screentype = global.screenShape
       })
+      try { toast('ime-ok') } catch (e0) {}
     } catch (e) {
       try { toast('IME初始化异常: ' + ((e && e.message) || e)) } catch (e2) {}
     }

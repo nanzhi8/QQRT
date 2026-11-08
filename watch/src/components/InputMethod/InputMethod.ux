@@ -457,7 +457,7 @@ export default {
     this.$watch("keyboardtype", "watchKeyboardTypePropsChange");
   },
   onDestroy() {
-    this._dictionary.destroy();
+    if (this._dictionary && this._dictionary.destroy) this._dictionary.destroy();
   },
   addAllTxt(txt) {
     this.$emit("complete", { content: txt });

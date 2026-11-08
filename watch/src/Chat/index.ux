@@ -205,7 +205,9 @@ export default {
   onInit() {
     const vh = (typeof global !== 'undefined' && global.designH) || 480
     this.vh = vh
-    this.listH = vh - 128
+    // 圆屏：顶栏 66 + 底栏(12+64)=76 → 列表高度收缩；方屏维持原 128
+    const chrome = (typeof global !== 'undefined' && global.isCircle) ? 142 : 128
+    this.listH = vh - chrome
     this.cid = String(this.id || '')
     this.ctitle = prettyTitle(this.title, this.scope)
     this.cscope = this.scope === 'group' ? 'group' : 'c2c'
@@ -536,7 +538,9 @@ export default {
       }
       prevTs = ts
     }
-    if (out.length > 120) out.splice(0, out.length - 120)
+    // 内存收敛：S 系列三页叠加（首页+聊天+输入法）+ 图片位图易触发内存杀进程；
+    // 聊天页保留上限 120 → 80，显著降低多页叠加时的峰值内存。
+    if (out.length > 80) out.splice(0, out.length - 80)
     this.messages = out
     this.lastSeq = lastSeq
     this.empty = out.length === 0
@@ -626,6 +630,9 @@ export default {
       global.__imeLabel = '发给 ' + (this.ctitle || '')
       global.__imeResult = null
     }
+    // 诊断打点（定位 S 系列闪退用）：屏上出现 go-ime = 点击处理正常、
+    // 崩溃发生在输入法页创建阶段；连 go-ime 都没有 = 崩在聊天页自身。
+    try { toast('go-ime') } catch (e) {}
     go('Ime')
   },
 
@@ -1423,12 +1430,30 @@ export default {
   justify-content: center;
 }
 
-/* 圆屏（S 系列）安全区修复：底部输入栏原先贴满左右边缘，发送按钮
-   整体落在圆形裁切区外（点不到）。内收后按钮中心落在半径内可正常点按。 */
+/* 圆屏（S 系列）安全区彻底适配：S5/S4 物理圆屏对应 design 圆心(168,168) 半径168，
+   原布局的顶栏两端、底栏发送按钮、引用条、表情面板边角都落在裁切区外。
+   全部内收到安全区（靠边 y 处允许 |dx| = √(168²-dy²)）。 */
 @media (shape: circle) {
+  .head {
+    height: 66px;
+    padding-top: 10px;
+    padding-left: 52px;
+    padding-right: 52px;
+  }
   .bar {
+    height: 64px;
+    bottom: 12px;
     padding-left: 50px;
     padding-right: 50px;
+  }
+  .reply {
+    left: 40px;
+    width: 256px;
+    bottom: 84px;
+  }
+  .emoji-panel {
+    bottom: 84px;
+    height: 236px;
   }
 }
 
