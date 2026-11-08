@@ -198,9 +198,6 @@ export default {
     const t0 = Date.now()
     get('/api/watch/sync-messages', params, (err, obj) => {
       this.busy = false
-      // 页面已隐藏（改名输入法 / 设置页等）时，在途响应直接丢弃，
-      // 不更新后台页数据（新 Vela 平台后台页重渲染可能崩溃）。
-      if (!this.active) return
       if (err) {
         if (err.code === 'AUTH') { replace('Login'); return }
         // 长轮询失败 → 回退短轮询

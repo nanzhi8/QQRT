@@ -432,15 +432,9 @@ export default {
   onInit() {
     // Initialize the loader independently of hide watchers (unreliable on some devices).
     // Dictionary data is loaded on input; failed reads can retry on the next query.
-    // 修复（4.12.3）：不能用 Object.defineProperty —— S 系列（新 Vela runtime）的
-    // 组件实例是 sealed/proxy 对象，defineProperty 抛 TypeError → onInit 未捕获
-    // 异常 → 聊天页点输入框即闪退；老手环固件是普通对象所以没事。
-    // 改普通赋值；再兜底 try/catch：词库初始化失败也不崩（英文/数字/标点照常）。
-    try {
-      this._dictionary = createDictionaryLoader(this.dictionarypath);
-    } catch (e) {
-      this._dictionary = { search: function (w, l, cb) { cb({ chars: [], matched: '', multi: null }, w); }, release: function () {}, destroy: function () {} };
-    }
+    Object.defineProperty(this, "_dictionary", {
+      value: createDictionaryLoader(this.dictionarypath), configurable: true
+    });
     if (this.maxlength) {
       const tempCvalList = [];
       for (let i = 0; i < this.maxlength; i++) {
@@ -457,7 +451,7 @@ export default {
     this.$watch("keyboardtype", "watchKeyboardTypePropsChange");
   },
   onDestroy() {
-    if (this._dictionary && this._dictionary.destroy) this._dictionary.destroy();
+    this._dictionary.destroy();
   },
   addAllTxt(txt) {
     this.$emit("complete", { content: txt });

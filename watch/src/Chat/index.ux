@@ -11,9 +11,6 @@
       <text class="h-btn" @click="refresh">刷新</text>
     </div>
 
-    <!-- 诊断行（临时）：显示页面生命周期/轮询/导航阶段，闪退时报最后显示的文字 -->
-    <text style="position:absolute;top:58px;left:0;width:336px;height:20px;font-size:13px;color:#66c0ff;text-align:center;background-color:rgba(0,0,0,0.75);">{{dbg}}</text>
-
     <!-- 引用条（浮在输入栏上方，不改变布局） -->
     <div class="reply" if="{{replyId}}">
       <text class="reply-t">回复 {{replySender}}：{{replyPreview}}</text>
@@ -208,7 +205,7 @@ export default {
   onInit() {
     const vh = (typeof global !== 'undefined' && global.designH) || 480
     this.vh = vh
-    // 圆屏：顶栏 66 + 底栏(12+64)=76 → 列表高度收缩；方屏维持原 128
+    // 圆屏（S 系列）UI 适配：顶栏/底栏内收后高度变化，列表高度相应收缩
     const chrome = (typeof global !== 'undefined' && global.isCircle) ? 142 : 128
     this.listH = vh - chrome
     this.cid = String(this.id || '')
@@ -227,7 +224,6 @@ export default {
 
   onShow() {
     this.active = true
-    this.dbg = 'show'
     const r = typeof global !== 'undefined' ? global.__imeResult : null
     if (r) {
       const purpose = (typeof global !== 'undefined' && global.__imeFor) || ''
@@ -361,19 +357,12 @@ export default {
   poll() {
     if (!this.cid) return
     this.polling = true
-    // 决定性二分实验（4.12.6）：聊天页临时禁用长轮询，退回纯短轮询。
-    // 若这样不崩 → 长轮询在 S 系列聊天页的问题坐实；若照旧崩 → 轮询排除。
-    const useWait = false
+    const useWait = this.lpMode === 'long' && (this.lastSeq > 0)
     const params = { conversationId: this.cid, after: this.lastSeq || 0, limit: 20, read: 1 }
     if (useWait) { params.wait = 1; params.waitMs = LP_HOLD_MS }
     const t0 = Date.now()
-    const self = this
     get('/api/watch/messages', params, (err, obj) => {
-      self.polling = false
-      // 页面已隐藏（去输入法页 / 返回首页）时，在途响应直接丢弃：
-      // 更新后台页的响应式数据会触发后台页重渲染，部分新 Vela 平台（S 系列）会崩。
-      if (!self.active) return
-      self.dbg = 'poll' + (self._pollCount = (self._pollCount || 0) + 1)
+      this.polling = false
       if (err) {
         if (err.code === 'AUTH') { replace('Login'); return }
         // 长轮询失败 → 回退短轮询，避免一直空转
@@ -546,9 +535,7 @@ export default {
       }
       prevTs = ts
     }
-    // 内存收敛：S 系列三页叠加（首页+聊天+输入法）+ 图片位图易触发内存杀进程；
-    // 聊天页保留上限 120 → 80，显著降低多页叠加时的峰值内存。
-    if (out.length > 80) out.splice(0, out.length - 80)
+    if (out.length > 120) out.splice(0, out.length - 120)
     this.messages = out
     this.lastSeq = lastSeq
     this.empty = out.length === 0
@@ -632,18 +619,13 @@ export default {
 
   /* ---------- 输入 ---------- */
   openKeyboard() {
-    this.dbg = 'ime?'
     this.emojiOpen = false
     if (typeof global !== 'undefined') {
       global.__imeText = this.draft || ''
       global.__imeLabel = '发给 ' + (this.ctitle || '')
       global.__imeResult = null
     }
-    // 诊断打点（定位 S 系列闪退用）：屏上出现 go-ime = 点击处理正常、
-    // 崩溃发生在输入法页创建阶段；连 go-ime 都没有 = 崩在聊天页自身。
-    try { toast('go-ime') } catch (e) {}
     go('Ime')
-    this.dbg = 'pushed'
   },
 
   openEmoji() {
@@ -1440,7 +1422,7 @@ export default {
   justify-content: center;
 }
 
-/* 圆屏（S 系列）安全区彻底适配：S5/S4 物理圆屏对应 design 圆心(168,168) 半径168，
+/* 圆屏（S 系列）安全区适配：S5/S4 物理圆屏对应 design 圆心(168,168) 半径168，
    原布局的顶栏两端、底栏发送按钮、引用条、表情面板边角都落在裁切区外。
    全部内收到安全区（靠边 y 处允许 |dx| = √(168²-dy²)）。 */
 @media (shape: circle) {
