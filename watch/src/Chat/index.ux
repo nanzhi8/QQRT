@@ -141,7 +141,8 @@ import {
   sget, sset, sdel, hhmm, msgText, msgTag, renderEmoji, splitRich, firstImageIndex, buildUrl, prettyTitle
 } from '../common/api.js'
 
-const POLL_MS = 3200
+const LP_HOLD_MS = 15000   // 长轮询最长等待（毫秒）
+const MIN_INIT_GAP = 3100  // 两次轮询发起的最小间隔，遵守手表框架「轮询间隔 ≥3s」限制
 
 export default {
   protected: {
@@ -183,6 +184,8 @@ export default {
     timer: null,
     busy: false,
     polling: false,
+    lpMode: 'long',
+    lastInitAt: 0,
     sending: false,
     ready: false,
     active: false,
@@ -248,14 +251,27 @@ export default {
 
   startPoll() {
     this.stopPoll()
-    this.timer = setInterval(() => {
-      if (!this.active || this.polling) return
-      this.poll()
-    }, POLL_MS)
+    this.active = true
+    this.syncLoop()
   },
 
   stopPoll() {
-    if (this.timer) { clearInterval(this.timer); this.timer = null }
+    this.active = false
+    if (this.timer) { clearTimeout(this.timer); this.timer = null }
+  },
+
+  /** 连续同步循环：长轮询优先，失败/服务器不支持 wait 时回退短轮询；
+   *  始终保证两次发起间隔 ≥ MIN_INIT_GAP，遵守手表框架「轮询间隔 ≥3s」限制。 */
+  syncLoop() {
+    if (!this.active || this.polling) return
+    const now = Date.now()
+    const gap = this.lastInitAt ? (now - this.lastInitAt) : (MIN_INIT_GAP + 1)
+    if (gap < MIN_INIT_GAP) {
+      this.timer = setTimeout(() => this.syncLoop(), MIN_INIT_GAP - gap + 30)
+      return
+    }
+    this.lastInitAt = Date.now()
+    this.poll()
   },
 
   loadTitle() {
@@ -339,14 +355,39 @@ export default {
   poll() {
     if (!this.cid) return
     this.polling = true
-    get('/api/watch/messages', {
-      conversationId: this.cid, after: this.lastSeq || 0, limit: 20, read: 1
-    }, (err, obj) => {
+    const useWait = this.lpMode === 'long' && (this.lastSeq > 0)
+    const params = { conversationId: this.cid, after: this.lastSeq || 0, limit: 20, read: 1 }
+    if (useWait) { params.wait = 1; params.waitMs = LP_HOLD_MS }
+    const t0 = Date.now()
+    get('/api/watch/messages', params, (err, obj) => {
       this.polling = false
       if (err) {
-        if (err.code === 'AUTH') replace('Login')
+        if (err.code === 'AUTH') { replace('Login'); return }
+        // 长轮询失败 → 回退短轮询，避免一直空转
+        this.lpMode = 'short'
+        this.syncLoop()
         return
       }
+      const list = (obj && obj.messages) || []
+      if (list.length) {
+        try { this.apply(list, false) } catch (e) {}
+        if (this.followBottom) this.scrollBottom()
+      }
+      // 服务器立即返回且无新消息 = 不支持 wait（旧服务端），回退短轮询
+      const elapsed = Date.now() - t0
+      if (useWait && elapsed < 2000 && list.length === 0) this.lpMode = 'short'
+      this.syncLoop()
+    })
+  },
+
+  /** 显式刷新（发送 / 点击按钮 / 菜单操作后）：短轮询一次，不触发长轮询、不自续拉，
+   *  交给 syncLoop 的下一次调度继续同步。 */
+  quickRefresh() {
+    if (!this.cid || this.polling) return
+    this.polling = true
+    get('/api/watch/messages', { conversationId: this.cid, after: this.lastSeq || 0, limit: 20, read: 1 }, (err, obj) => {
+      this.polling = false
+      if (err) { if (err.code === 'AUTH') replace('Login'); return }
       const list = (obj && obj.messages) || []
       if (list.length) {
         try { this.apply(list, false) } catch (e) {}
@@ -611,7 +652,7 @@ export default {
     }, (err) => {
       if (err) { toast(err.msg || '操作失败'); return }
       toast('已点击：' + (b.label || ''))
-      this.poll()
+      this.quickRefresh()
     })
   },
 
@@ -654,7 +695,7 @@ export default {
       this.atAll = false
       this.layout()
       this.followBottom = true
-      this.poll()
+      this.quickRefresh()
       this.scrollBottom()
     })
   },

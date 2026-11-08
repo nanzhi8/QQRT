@@ -46,6 +46,8 @@ import {
 } from '../common/api.js'
 
 const POLL_MS = 3500
+const LP_HOLD_MS = 15000   // 长轮询最长等待（毫秒）
+const MIN_INIT_GAP = 3100  // 两次同步发起的最小间隔，遵守手表框架 ≥3s 限制
 
 export default {
   private: {
@@ -62,8 +64,11 @@ export default {
     ready: false,
     cursor: 0,
     timer: null,
+    timer2: null,
     busy: false,
     active: false,
+    lpMode: 'long',
+    lastInitAt: 0,
     tick: 0
   },
 
@@ -77,7 +82,7 @@ export default {
       if (!hasAuth()) { replace('Login'); return }
       sget('qq_sync_after', (v) => {
         this.cursor = Number(v) || 0
-        this.refresh(true)
+        this.refresh()
         this.refreshNames()
         this.loadStatus()
         this.startPoll()
@@ -99,7 +104,7 @@ export default {
     if (!this.ready) return
     if (this.timer) return
     if (!hasAuth()) { replace('Login'); return }
-    this.refresh(false)
+    this.refresh()
     this.startPoll()
   },
 
@@ -116,20 +121,41 @@ export default {
   startPoll() {
     this.stopPoll()
     this.active = true
+    // 仅保留时钟 + 机器人状态轮询；消息同步交给自续拉的长轮询循环。
     this.timer = setInterval(() => {
       if (!this.active) return
       this.tickClock()
       this.tick = this.tick + 1
       if (this.tick % 6 === 1) this.loadStatus()
-      this.refresh(false)
     }, POLL_MS)
+    this.lastInitAt = 0
+    this.syncLoop()
   },
 
   stopPoll() {
+    this.active = false
     if (this.timer) {
       clearInterval(this.timer)
       this.timer = null
     }
+    if (this.timer2) {
+      clearTimeout(this.timer2)
+      this.timer2 = null
+    }
+  },
+
+  /** 连续同步循环：长轮询优先，失败/服务器不支持 wait 时回退短轮询；
+   *  始终保证两次发起间隔 ≥ MIN_INIT_GAP，遵守手表框架「轮询间隔 ≥3s」限制。 */
+  syncLoop() {
+    if (!this.active || this.busy) return
+    const now = Date.now()
+    const gap = this.lastInitAt ? (now - this.lastInitAt) : (MIN_INIT_GAP + 1)
+    if (gap < MIN_INIT_GAP) {
+      this.timer2 = setTimeout(() => this.syncLoop(), MIN_INIT_GAP - gap + 30)
+      return
+    }
+    this.lastInitAt = Date.now()
+    this.doRefresh()
   },
 
   tickClock() {
@@ -155,53 +181,75 @@ export default {
     })
   },
 
+  /** 立即触发一次同步（打破间隔限制）：页面切回 / 手动同步后调用。 */
   refresh(force) {
+    if (this.busy) return
+    this.lastInitAt = 0
+    this.syncLoop()
+  },
+
+  doRefresh() {
     if (this.busy) return
     if (!hasAuth()) { replace('Login'); return }
     this.busy = true
-    get('/api/watch/sync-messages', { after: this.cursor || 0 }, (err, obj) => {
+    const useWait = this.lpMode === 'long' && (this.cursor > 0)
+    const params = { after: this.cursor || 0 }
+    if (useWait) { params.wait = 1; params.waitMs = LP_HOLD_MS }
+    const t0 = Date.now()
+    get('/api/watch/sync-messages', params, (err, obj) => {
       this.busy = false
       if (err) {
         if (err.code === 'AUTH') { replace('Login'); return }
+        // 长轮询失败 → 回退短轮询
+        this.lpMode = 'short'
         this.empty = this.conversations.length === 0
         this.emptyText = err.msg || '网络异常'
         this.footText = err.msg || ''
+        this.syncLoop()
         return
       }
       this.footText = ''
-      const list = (obj && obj.conversations) || []
-      const out = []
-      let maxSeq = this.cursor || 0
-      for (let i = 0; i < list.length; i++) {
-        const c = list[i] || {}
-        const unread = Number(c.unread) || 0
-        out.push({
-          id: String(c.id || ''),
-          title: prettyTitle(c.title, c.scope),
-          scope: c.scope || 'c2c',
-          unread: unread,
-          unreadText: unread > 99 ? '99+' : String(unread),
-          preview: String(c.lastPreview || ''),
-          timeText: listTime(c.lastMessageAt),
-          avatarChar: (String(c.title || 'Q').charAt(0) || 'Q')
-        })
-      }
-      const groups = (obj && obj.groups) || []
-      for (let g = 0; g < groups.length; g++) {
-        const msgs = (groups[g] && groups[g].messages) || []
-        for (let k = 0; k < msgs.length; k++) {
-          const sq = Number(msgs[k].seq) || 0
-          if (sq > maxSeq) maxSeq = sq
-        }
-      }
-      if (maxSeq !== this.cursor) {
-        this.cursor = maxSeq
-        sset('qq_sync_after', String(maxSeq))
-      }
-      this.conversations = out
-      this.empty = out.length === 0
-      this.emptyText = this.empty ? '暂无会话，等待新消息…' : ''
+      this.applySync(obj)
+      const elapsed = Date.now() - t0
+      // 服务器立即返回且无新消息 = 不支持 wait（旧服务端），回退短轮询
+      if (useWait && elapsed < 2000 && (!obj || !obj.groups || obj.groups.length === 0)) this.lpMode = 'short'
+      this.syncLoop()
     })
+  },
+
+  applySync(obj) {
+    const list = (obj && obj.conversations) || []
+    const out = []
+    let maxSeq = this.cursor || 0
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i] || {}
+      const unread = Number(c.unread) || 0
+      out.push({
+        id: String(c.id || ''),
+        title: prettyTitle(c.title, c.scope),
+        scope: c.scope || 'c2c',
+        unread: unread,
+        unreadText: unread > 99 ? '99+' : String(unread),
+        preview: String(c.lastPreview || ''),
+        timeText: listTime(c.lastMessageAt),
+        avatarChar: (String(c.title || 'Q').charAt(0) || 'Q')
+      })
+    }
+    const groups = (obj && obj.groups) || []
+    for (let g = 0; g < groups.length; g++) {
+      const msgs = (groups[g] && groups[g].messages) || []
+      for (let k = 0; k < msgs.length; k++) {
+        const sq = Number(msgs[k].seq) || 0
+        if (sq > maxSeq) maxSeq = sq
+      }
+    }
+    if (maxSeq !== this.cursor) {
+      this.cursor = maxSeq
+      sset('qq_sync_after', String(maxSeq))
+    }
+    this.conversations = out
+    this.empty = out.length === 0
+    this.emptyText = this.empty ? '暂无会话，等待新消息…' : ''
   },
 
   syncAll() {
@@ -215,7 +263,7 @@ export default {
         return
       }
       toast('已同步 ' + ((obj && obj.synced) || 0) + ' 个会话')
-      this.refresh(true)
+      this.refresh()
     })
   },
 
@@ -234,7 +282,7 @@ export default {
   refreshNames() {
     post('/api/watch/refresh-names', {}, (err, obj) => {
       if (err) return
-      if (obj && obj.updated) this.refresh(true)
+      if (obj && obj.updated) this.refresh()
     })
   },
 
@@ -244,7 +292,7 @@ export default {
       if (err) { toast(err.msg || '改名失败'); return }
       toast(v ? '已改名' : '已恢复原名')
       this.renameTarget = null
-      this.refresh(true)
+      this.refresh()
     })
   },
 

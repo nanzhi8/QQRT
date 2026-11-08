@@ -301,6 +301,89 @@ export async function waitForWatchMessages(
   });
 }
 
+/**
+ * 全局增量长轮询（首页用）：等待指定用户**任意会话**出现 seq > afterSeq 的新消息。
+ * 与 waitForWatchMessages 同理，但监听范围扩展到该用户全部会话，并用全局
+ * listWatchMessagesSince 拉取（不再限定单个会话）。
+ *
+ * 双保险同样适用：bus 事件唤醒（任意会话的 message 事件）+ 周期复查兜底。
+ * 返回 { messages, touched }，touched 表示 hold 期间该用户收到过任意新消息事件。
+ */
+export async function waitForWatchMessagesSince(
+  userId: string,
+  afterSeq: number,
+  limit: number,
+  waitMs = 20_000,
+): Promise<{ messages: WatchMessage[]; touched: boolean }> {
+  const boundedWait = Math.min(Math.max(waitMs, 3_000), 20_000);
+  return new Promise<{ messages: WatchMessage[]; touched: boolean }>((resolve) => {
+    let done = false;
+    let touched = false;
+    let deadlineTimer: NodeJS.Timeout | null = null;
+    let reCheckTimer: NodeJS.Timeout | null = null;
+    let unsubscribe: (() => void) | null = null;
+
+    const cleanup = () => {
+      if (deadlineTimer) clearTimeout(deadlineTimer);
+      if (reCheckTimer) clearTimeout(reCheckTimer);
+      if (unsubscribe) unsubscribe();
+      deadlineTimer = null;
+      reCheckTimer = null;
+      unsubscribe = null;
+    };
+
+    const finish = async () => {
+      if (done) return;
+      done = true;
+      cleanup();
+      try {
+        resolve({ messages: await listWatchMessagesSince(userId, afterSeq, limit), touched });
+      } catch {
+        resolve({ messages: [], touched });
+      }
+    };
+
+    unsubscribe = bus.subscribe((event) => {
+      if (event.userId !== userId || event.type !== "message") return;
+      // 任意会话的新消息都唤醒全局同步（首页要拉全部会话）。
+      touched = true;
+      void finish();
+    });
+
+    deadlineTimer = setTimeout(() => { void finish(); }, boundedWait);
+
+    // 周期复查：兜住「bus 事件丢失」的情况（多进程 / 重启 / 非网关路径入库）。
+    const scheduleReCheck = () => {
+      if (done) return;
+      reCheckTimer = setTimeout(() => {
+        if (done) return;
+        void listWatchMessagesSince(userId, afterSeq, limit)
+          .then((rows) => {
+            if (done) return;
+            if (rows.length > 0) {
+              done = true;
+              cleanup();
+              resolve({ messages: rows, touched });
+              return;
+            }
+            scheduleReCheck();
+          })
+          .catch(() => { if (!done) scheduleReCheck(); });
+      }, RE_CHECK_MS);
+    };
+    scheduleReCheck();
+
+    // 订阅后再查一次，消除“查询完成到订阅建立之间”丢事件的竞态。
+    void listWatchMessagesSince(userId, afterSeq, limit).then((rows) => {
+      if (rows.length > 0) {
+        done = true;
+        cleanup();
+        resolve({ messages: rows, touched });
+      }
+    }).catch(() => {});
+  });
+}
+
 export async function markWatchRead(userId: string, conversationId: string): Promise<void> {
   await markRead(userId, conversationId);
 }
