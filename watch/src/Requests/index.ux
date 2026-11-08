@@ -239,4 +239,5 @@ export default {
   color: #888888;
   text-align: right;
 }
+
 </style>

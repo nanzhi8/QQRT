@@ -70,7 +70,7 @@ export default {
   onInit() {
     const vh = (typeof global !== 'undefined' && global.designH) || 480
     this.vh = vh
-    this.listH = vh - 106
+    this.listH = vh - 108
     this.tickClock()
     loadAuth(() => {
       this.ready = true
@@ -424,4 +424,5 @@ export default {
   color: #ff6b5e;
   text-align: center;
 }
+
 </style>

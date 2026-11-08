@@ -283,4 +283,5 @@ export default {
   font-size: 18px;
   color: #ff6b6b;
 }
+
 </style>

@@ -1,5 +1,6 @@
 <template>
-  <div class="page">
+  <div class="page" style="height:{{vh}}px">
+    <scroll class="scroll" scroll-y="true" style="height:{{vh}}px">
     <div class="hero">
       <div class="logo"><text class="logo-t">Q</text></div>
       <text class="title">QQRT</text>
@@ -31,6 +32,7 @@
     <text class="err" if="{{error}}">{{error}}</text>
     <text class="tip">服务器地址可只填分享码（如 TFK3NX7DXP）</text>
     <text class="tip">使用服务器网站内部账号登录</text>
+    </scroll>
   </div>
 </template>
 
@@ -47,10 +49,12 @@ export default {
     password: '',
     busy: false,
     error: '',
-    imeField: ''
+    imeField: '',
+    vh: 480
   },
 
   onInit() {
+    this.vh = (typeof global !== 'undefined' && global.designH) || 480
     loadAuth(() => {
       this.host = getHost() || DEFAULT_HOST
       sget('qq_acct', (a) => { this.account = a || '' })
@@ -129,6 +133,10 @@ export default {
 </script>
 
 <style>
+.scroll {
+  width: 336px;
+  flex-direction: column;
+}
 .page {
   width: 336px;
   height: 480px;
@@ -235,4 +243,5 @@ export default {
   text-align: center;
   margin-top: 10px;
 }
+
 </style>

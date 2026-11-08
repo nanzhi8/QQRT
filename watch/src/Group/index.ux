@@ -702,4 +702,5 @@ export default {
 .rrow { width: 336px; height: 50px; flex-direction: row; align-items: center; padding-left: 12px; padding-right: 12px; border-bottom-width: 1px; border-bottom-color: #1c1c1c; }
 .rk { width: 110px; font-size: 13px; color: #8fa3bd; lines: 1; text-overflow: ellipsis; }
 .rv { flex-grow: 1; font-size: 14px; color: #d8e2ee; lines: 2; text-overflow: ellipsis; }
+
 </style>

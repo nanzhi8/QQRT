@@ -1,13 +1,38 @@
 <script>
 import device from '@system.device'
 
+/**
+ * 多设备适配（小米手环 9/10 Pro + Xiaomi Watch S5 等 Vela 手表）
+ *
+ * Vela 官方 fetch 支持明细（2026-11 查证）：
+ *   支持     Xiaomi Watch S1 Pro / S3 / S4 / S5、REDMI Watch 5 / 6
+ *   不支持   小米手环 8 Pro / 9 / 9 Pro / 10
+ * 即 S5（含 eSIM 版）原生即可 fetch，配 Wi-Fi 或 eSIM 蜂窝就能脱离手机直连，
+ * 不需要 10 Pro 上那套 TUN 模块 / CA 补丁；手环仍需代理。
+ *
+ * designWidth 固定 336：Vela 会按物理宽度等比缩放，一套代码通吃
+ * 336x480 矩形手环、432x514 矩形手表、466x466 / 480x480 圆形手表。
+ * 设计高度按宽高比换算（designH = 336 * sh / sw），各页面用 vh 动态布局。
+ */
 export default {
   onCreate() {
-    // 默认按手环 9 Pro（336x480）布局，拿到设备信息后按屏幕比例修正。
-    // 红米手表 6 是 432x514，比例更矮，designWidth 336 时设计高度只有约 400。
     global.screenShape = 'rect'
     global.screenSize = { width: 336, height: 480 }
     global.designH = 480
+
+    // 设备信息（诊断页展示，也用于判断是否需要 TUN 代理）
+    global.deviceInfo = {
+      model: '', product: '', brand: '', deviceType: '',
+      osType: '', osVersionName: '',
+      platformVersionName: '', platformVersionCode: 0,
+      screenWidth: 0, screenHeight: 0, screenShape: 'rect'
+    }
+    global.isCircle = false
+    // 圆屏四角会被裁切，页面左右留出安全边距（design px）
+    global.safePad = 0
+    // 'native' = 官方支持原生 fetch；'proxy' = 需手机代理 / TUN 模块；'unknown' = 无法判断
+    global.netHint = 'unknown'
+
     global.__imeText = ''
     global.__imeLabel = ''
     global.__imeResult = null
@@ -15,18 +40,46 @@ export default {
     try {
       device.getInfo({
         success: function (info) {
-          var sw = Number(info && info.screenWidth) || 0
-          var sh = Number(info && info.screenHeight) || 0
+          var d = info || {}
+          var sw = Number(d.screenWidth) || 0
+          var sh = Number(d.screenHeight) || 0
+          var shape = String(d.screenShape || 'rect').toLowerCase()
+          var model = String(d.model || d.product || '')
+          var dtype = String(d.deviceType || '')
+
           if (sw > 0 && sh > 0) {
-            // 只用到宽高比：designWidth 固定 336，设计高度 = 336 * 屏高 / 屏宽
             var h = Math.round((336 * sh) / sw)
             if (h >= 240 && h <= 900) {
               global.designH = h
               global.screenSize = { width: 336, height: h }
             }
           }
-          if (info && info.screenShape) global.screenShape = info.screenShape
-          console.log('QQRT screen ' + sw + 'x' + sh + ' -> designH ' + global.designH)
+          global.screenShape = shape
+          global.isCircle = (shape === 'circle')
+          global.safePad = global.isCircle ? 24 : 0
+
+          global.deviceInfo = {
+            model: model,
+            product: String(d.product || ''),
+            brand: String(d.brand || ''),
+            deviceType: dtype,
+            osType: String(d.osType || ''),
+            osVersionName: String(d.osVersionName || ''),
+            platformVersionName: String(d.platformVersionName || ''),
+            platformVersionCode: Number(d.platformVersionCode) || 0,
+            screenWidth: sw,
+            screenHeight: sh,
+            screenShape: shape
+          }
+
+          // 官方支持表是型号级的，这里只做提示性判断；真正以网络实测为准。
+          var bandNoFetch = /band\s*(8\s*pro|9|10)|xiaomi\s*band|miband/i.test(model + ' ' + dtype)
+          var watchNative = dtype === 'watch' || /watch/i.test(model)
+          if (bandNoFetch && !watchNative) global.netHint = 'proxy'
+          else if (watchNative) global.netHint = 'native'
+
+          console.log('QQRT device ' + model + ' / ' + dtype + ' ' + sw + 'x' + sh +
+            ' ' + shape + ' -> designH ' + global.designH + ' netHint ' + global.netHint)
         },
         fail: function () {}
       })

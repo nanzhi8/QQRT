@@ -1,6 +1,6 @@
 <template>
   <div class="page" style="height:{{vh}}px" @click="goBack">
-    <image class="pic" src="{{url}}" if="{{url}}"></image>
+    <image class="pic" src="{{url}}" style="height:{{vh}}px" if="{{url}}"></image>
     <text class="hint" else>图片加载失败，点击返回</text>
   </div>
 </template>
@@ -50,4 +50,5 @@ export default {
   color: #888888;
   text-align: center;
 }
+
 </style>

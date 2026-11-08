@@ -913,6 +913,10 @@ export default {
   text-align: right;
 }
 .reply {
+  /* 引用条浮在输入栏上方，不占文档流；否则高度固定的屏幕上会把底部输入栏挤出 */
+  position: absolute;
+  bottom: 72px;
+  left: 0px;
   width: 336px;
   height: 44px;
   flex-direction: row;
@@ -1374,5 +1378,6 @@ export default {
   align-items: center;
   justify-content: center;
 }
+
 
 </style>

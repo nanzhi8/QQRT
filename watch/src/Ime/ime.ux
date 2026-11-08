@@ -8,7 +8,7 @@
       <text static if="{{ label }}" style="margin-bottom: 4px; color: #fff;">{{ label }}</text>
       <div class="input-line" @click="finish(true)">
         <scroll
-          style="position: absolute; width: 100%; height: 42px; margin: 6px 0"
+          style="position: absolute; width: 100%; height: {{ inputScrollH }}px; margin: {{ inputScrollM }}px 0"
           scroll-x="true"
         >
           <text class="input-text">
@@ -20,71 +20,71 @@
     <div class="page" style="flex-direction: column">
     <div style="background-color: black">
       <!-- 圆屏62 -->
-      <div if="{{ screentype==='circle' }}" style="width: 480px; height: 321px">
+      <div if="{{ screentype==='circle' }}" style="width: 336px; height: 225px">
         <!-- 全键盘 -->
         <div
           id="full-keyboard"
            if="{{ keyboardtype!='T9' }}"
-          style="width: 480px; height: 321px"
+          style="width: 336px; height: 225px"
         >
           <img
             src="./assets/full/back2.png"
-            style="position: absolute; top: 38px; left: 7px; width: 466px; height: 52px"
+            style="position: absolute; top: 27px; left: 5px; width: 326px; height: 36px"
             @click="onBtnClick('switchCn')"
             show="{{ numFlag }}"
           />
           <img
             src="./assets/full/123.png"
-            style="position: absolute; top: 266px; left: 119px; width: 120px; height: 48px"
+            style="position: absolute; top: 186px; left: 83px; width: 84px; height: 34px"
             @click="onBtnClick('switchNum')"
             show="{{ downFlag==='' && !numFlag && lang==='cn' }}"
           />
           <img
             src="./assets/full/bigA.png"
-            style="position: absolute; top: 266px; left: 119px; width: 120px; height: 48px"
+            style="position: absolute; top: 186px; left: 83px; width: 84px; height: 34px"
             @click="onBtnClick('switchLow')"
             show="{{ downFlag==='' && upperFlag && lang==='en' }}"
           />
           <img
             src="./assets/full/A.png"
-            style="position: absolute; top: 266px; left: 119px; width: 120px; height: 48px"
+            style="position: absolute; top: 186px; left: 83px; width: 84px; height: 34px"
             @click="onBtnClick('switchUpper')"
             show="{{ downFlag==='' && !upperFlag && lang==='en' }}"
           />
           <div
             style="
               position: absolute;
-              top: 38px;
-              left: 78px;
-              width: 324px;
-              height: 52px;
+              top: 27px;
+              left: 55px;
+              width: 227px;
+              height: 36px;
               background-color: rgb(38, 38, 38);
-              border-radius: 12px;
-              border: 3px solid #333333;
+              border-radius: 8px;
+              border: 2px solid #333333;
             "
             show="{{ downFlag===''&& !numFlag }}"
           ></div>
           <img
             show="{{ resultList.length > 0 }}"
-            style="position: absolute; top: 43px; left: 355px"
+            style="position: absolute; top: 30px; left: 248px"
             src="./assets/full/down.png"
             @click="onBtnClick('down')"
           />
           <!-- 带变量的相对路径在 aiot-tookit 2.0.4 中修复 -->
           <img
             src="/pages/ime/assets/full/{{ lang }}.png"
-            style="position: absolute; top: 38px; left: 7px; width: 67px; height: 52px"
+            style="position: absolute; top: 27px; left: 5px; width: 47px; height: 36px"
             @click="onBtnClick('lang')"
             show="{{ downFlag==='' && !numFlag }}"
           />
           <div
-            style="position: absolute; top: -4px; left: 78px; width: 324px"
+            style="position: absolute; top: -3px; left: 55px; width: 227px"
             show="{{ downFlag==='' && !numFlag && cval }}"
           >
-            <text class="caltext" style="width: 296px">{{ cval }}_</text>
+            <text class="caltext" style="width: 207px">{{ cval }}_</text>
           </div>
           <div
-            style="position: absolute; top: 38px; left: 80px; width: 277px"
+            style="position: absolute; top: 27px; left: 56px; width: 194px"
             show="{{ lang === 'cn'&& !numFlag }}"
           >
             <div class="item column center" for="{{ cvalList }}">
@@ -100,10 +100,10 @@
           <div
             style="
               position: absolute;
-              top: 38px;
-              left: 80px;
-              width: 320px;
-              height: 52px;
+              top: 27px;
+              left: 56px;
+              width: 224px;
+              height: 36px;
               align-content: center;
               align-items: center;
               justify-content: center;
@@ -116,19 +116,19 @@
           <!-- 这里使用show会导致每次输入都会加载全部候选列表，很卡 -->
           <list class="list3" if="{{ downFlag==='down' }}">
             <list-item type="waitingRows62t9" class="item3" for="{{ itemArray in resultList2 }}">
-              <div class="item column center" style="height: 52px" for="{{ item in itemArray }}">
+              <div class="item column center" style="height: 36px" for="{{ item in itemArray }}">
                 <input class="calbtn0" type="button" value="{{ item }}" @click="onRsSelect(item)" />
               </div>
             </list-item>
           </list>
           <div
-            style="position: absolute; top: 95px; left: 8px; width: 464px; height: 52px"
+            style="position: absolute; top: 66px; left: 6px; width: 325px; height: 36px"
             show="{{ downFlag===''&&!numFlag }}"
           >
             <img
               static
               src="./assets/full/Q.png"
-              style="width: 54px; height: 52px; margin-right: 4px"
+              style="width: 38px; height: 36px; margin-right: 3px"
               @click="onSelect('Q')"
             />
             <text class="calbtnfull" for="{{ item in keys['full62'][0] }}" @click="onSelect(item)">
@@ -137,18 +137,18 @@
             <img
               static
               src="./assets/full/P.png"
-              style="width: 54px; height: 52px"
+              style="width: 38px; height: 36px"
               @click="onSelect('P')"
             />
           </div>
           <div
-            style="position: absolute; top: 152px; left: 23px; width: 438px; height: 52px"
+            style="position: absolute; top: 106px; left: 16px; width: 307px; height: 36px"
             show="{{ downFlag===''&&!numFlag }}"
           >
             <img
               static
               src="./assets/full/btA.png"
-              style="width: 60px; height: 52px; margin-right: 4px"
+              style="width: 42px; height: 36px; margin-right: 3px"
               @click="onSelect('A')"
             />
             <text class="calbtnfull" for="{{ item in keys['full62'][1] }}" @click="onSelect(item)">
@@ -157,18 +157,18 @@
             <img
               static
               src="./assets/full/L.png"
-              style="width: 60px; height: 52px"
+              style="width: 42px; height: 36px"
               @click="onSelect('L')"
             />
           </div>
           <div
-            style="position: absolute; top: 209px; left: 56px; width: 368px; height: 52px"
+            style="position: absolute; top: 146px; left: 39px; width: 258px; height: 36px"
             show="{{ downFlag===''&&!numFlag }}"
           >
             <img
               static
               src="./assets/full/Z.png"
-              style="width: 72px; height: 52px; margin-right: 4px"
+              style="width: 50px; height: 36px; margin-right: 3px"
               @click="onSelect('Z')"
             />
             <text class="calbtnfull" for="{{ item in keys['full62'][2] }}" @click="onSelect(item)">
@@ -177,18 +177,18 @@
             <img
               static
               src="./assets/full/M.png"
-              style="width: 72px; height: 52px"
+              style="width: 50px; height: 36px"
               @click="onSelect('M')"
             />
           </div>
           <div
-            style="position: absolute; top: 95px; left: 8px; width: 464px; height: 52px"
+            style="position: absolute; top: 66px; left: 6px; width: 325px; height: 36px"
             show="{{ numFlag }}"
           >
             <img
               static
               src="./assets/full/1.png"
-              style="width: 54px; height: 52px; margin-right: 4px"
+              style="width: 38px; height: 36px; margin-right: 3px"
               @click="onSelect('1')"
             />
             <text class="calbtnfull" for="{{ item in keys['sign62'][0] }}" @click="onSelect(item)">
@@ -197,18 +197,18 @@
             <img
               static
               src="./assets/full/0.png"
-              style="width: 54px; height: 52px"
+              style="width: 38px; height: 36px"
               @click="onSelect('0')"
             />
           </div>
           <div
-            style="position: absolute; top: 152px; left: 23px; width: 438px; height: 52px"
+            style="position: absolute; top: 106px; left: 16px; width: 307px; height: 36px"
             show="{{ numFlag }}"
           >
             <img
               static
               src="./assets/full/2-1.png"
-              style="width: 60px; height: 52px; margin-right: 4px"
+              style="width: 42px; height: 36px; margin-right: 3px"
               @click="onSelect('~')"
             />
             <text class="calbtnfull" for="{{ item in keys['sign62'][1] }}" @click="onSelect(item)">
@@ -217,18 +217,18 @@
             <img
               static
               src="./assets/full/2-2.png"
-              style="width: 60px; height: 52px"
+              style="width: 42px; height: 36px"
               @click="onSelect('?')"
             />
           </div>
           <div
-            style="position: absolute; top: 209px; left: 56px; width: 368px; height: 52px"
+            style="position: absolute; top: 146px; left: 39px; width: 258px; height: 36px"
             show="{{ numFlag }}"
           >
             <img
               static
               src="./assets/full/3-1.png"
-              style="width: 72px; height: 52px; margin-right: 4px"
+              style="width: 50px; height: 36px; margin-right: 3px"
               @click="onSelect('(')"
             />
             <text class="calbtnfull" for="{{ item in keys['sign62'][2] }}" @click="onSelect(item)">
@@ -237,107 +237,107 @@
             <img
               static
               src="./assets/full/3-2.png"
-              style="width: 72px; height: 52px"
+              style="width: 50px; height: 36px"
               @click="onSelect('、')"
             />
           </div>
           <img
             src="./assets/full/del.png"
-            style="position: absolute; top: 38px; left: 406px; width: 67px; height: 52px"
+            style="position: absolute; top: 27px; left: 284px; width: 47px; height: 36px"
             @click="onBtnClick('D')"
             show="{{ downFlag==='' && !numFlag }}"
           />
           <img
             src="./assets/full/space.png"
-            style="position: absolute; top: 266px; left: 242px; width: 120px; height: 48px"
+            style="position: absolute; top: 186px; left: 169px; width: 84px; height: 34px"
             @click="onBtnClick('space')"
             show="{{ downFlag==='' && !numFlag }}"
           />
           <img
             src="./assets/full/4-2.png"
-            style="position: absolute; top: 266px; left: 242px; width: 120px; height: 48px"
+            style="position: absolute; top: 186px; left: 169px; width: 84px; height: 34px"
             @click="onSelect('.')"
             show="{{ numFlag }}"
           />
           <img
             src="./assets/full/4-1.png"
-            style="position: absolute; top: 266px; left: 119px; width: 120px; height: 48px"
+            style="position: absolute; top: 186px; left: 83px; width: 84px; height: 34px"
             @click="onSelect('，')"
             show="{{ numFlag }}"
           />
           <img
-            style="position: absolute; top: 204px; left: 78px"
+            style="position: absolute; top: 143px; left: 55px"
             src="./assets/full/up.png"
             @click="onBtnClick('down')"
             show="{{ downFlag==='down' }}"
           />
         </div>
         <!-- 九键 -->
-        <div else style="width: 480px; height: 321px">
+        <div else style="width: 336px; height: 225px">
           <img
             src="./assets/t9/back2.png"
-            style="position: absolute; top: 35px; left: 31px; width: 60px; height: 60px"
+            style="position: absolute; top: 24px; left: 22px; width: 42px; height: 42px"
             @click="onBtnClick('switchCn')"
             show="{{ numFlag }}"
           />
           <img
             src="./assets/t9/123.png"
-            style="position: absolute; top: 99px; left: 31px; width: 60px; height: 60px"
+            style="position: absolute; top: 69px; left: 22px; width: 42px; height: 42px"
             @click="onBtnClick('switchNum')"
             show="{{ downFlag==='' && !numFlag && lang==='cn' }}"
           />
           <img
             src="./assets/t9/bigA.png"
-            style="position: absolute; top: 99px; left: 31px; width: 60px; height: 60px"
+            style="position: absolute; top: 69px; left: 22px; width: 42px; height: 42px"
             @click="onBtnClick('switchLow')"
             show="{{ downFlag==='' && !numFlag && upperFlag && lang==='en' }}"
           />
           <img
             src="./assets/t9/a.png"
-            style="position: absolute; top: 99px; left: 31px; width: 60px; height: 60px"
+            style="position: absolute; top: 69px; left: 22px; width: 42px; height: 42px"
             @click="onBtnClick('switchUpper')"
             show="{{ downFlag==='' && !numFlag && !upperFlag && lang==='en' }}"
           />
           <div
             style="
               position: absolute;
-              top: 35px;
-              left: 95px;
-              width: 290px;
-              height: 60px;
+              top: 24px;
+              left: 66px;
+              width: 203px;
+              height: 42px;
               background-color: rgb(38, 38, 38);
               border-radius: 999px;
-              border: 3px solid #333333;
+              border: 2px solid #333333;
             "
             show="{{ downFlag===''&& !numFlag }}"
           ></div>
           <img
             show="{{ resultList.length > 0 }}"
-            style="position: absolute; top: 44px; left: 338px"
+            style="position: absolute; top: 31px; left: 237px"
             src="./assets/full/down.png"
             @click="onBtnClick('down')"
           />
           <!-- 带变量的相对路径在 aiot-tookit 2.0.4 中修复 -->
           <img
             src="/pages/ime/assets/t9/{{ lang }}.png"
-            style="position: absolute; top: 35px; left: 31px; width: 60px; height: 60px"
+            style="position: absolute; top: 24px; left: 22px; width: 42px; height: 42px"
             @click="onBtnClick('lang')"
             show="{{ downFlag==='' && !numFlag }}"
           />
           <div
-            style="position: absolute; top: -4px; left: 95px; width: 145px; height: 40px"
+            style="position: absolute; top: -3px; left: 66px; width: 102px; height: 28px"
             show="{{ downFlag==='' && !numFlag && cval }}"
           >
-            <text class="caltext" style="width: 145px">{{ cval }}_</text>
+            <text class="caltext" style="width: 102px">{{ cval }}_</text>
           </div>
           <div
             show="{{ downFlag==='' && !numFlag }}"
             style="
               position: absolute;
-              top: -4px;
-              left: 240px;
-              width: 145px;
-              height: 40px;
+              top: -3px;
+              left: 168px;
+              width: 102px;
+              height: 28px;
               justify-content: flex-end;
             "
           >
@@ -351,7 +351,7 @@
             </text>
           </div>
           <div
-            style="position: absolute; top: 39px; left: 105px; width: 233px"
+            style="position: absolute; top: 27px; left: 74px; width: 163px"
             show="{{ lang === 'cn'&& !numFlag }}"
           >
             <div class="item column center" for="{{ cvalList }}">
@@ -367,10 +367,10 @@
           <div
             style="
               position: absolute;
-              top: 35px;
-              left: 95px;
-              width: 290px;
-              height: 60px;
+              top: 24px;
+              left: 66px;
+              width: 203px;
+              height: 42px;
               align-content: center;
               align-items: center;
               justify-content: center;
@@ -383,13 +383,13 @@
           <!-- 这里使用show会导致每次输入都会加载全部候选列表，很卡 -->
           <list class="list3" if="{{ downFlag==='down' }}">
             <list-item type="waitingRows62full" class="item3" for="{{ itemArray in resultList2 }}">
-              <div class="item column center" style="height: 52px" for="{{ item in itemArray }}">
+              <div class="item column center" style="height: 36px" for="{{ item in itemArray }}">
                 <input class="calbtn0" type="button" value="{{ item }}" @click="onRsSelect(item)" />
               </div>
             </list-item>
           </list>
           <div
-            style="position: absolute; top: 99px; left: 95px; width: 294px; height: 60px"
+            style="position: absolute; top: 69px; left: 66px; width: 206px; height: 42px"
             show="{{ downFlag===''&&!numFlag }}"
           >
             <text class="calbtnt9" @click="onSelect('select')">选择</text>
@@ -398,7 +398,7 @@
             </text>
           </div>
           <div
-            style="position: absolute; top: 163px; left: 95px; width: 294px; height: 60px"
+            style="position: absolute; top: 114px; left: 66px; width: 206px; height: 42px"
             show="{{ downFlag===''&&!numFlag }}"
           >
             <text class="calbtnt9" for="{{ item in keys['t9'][1] }}" @click="onSelect(item)">
@@ -406,7 +406,7 @@
             </text>
           </div>
           <div
-            style="position: absolute; top: 227px; left: 95px; width: 294px; height: 60px"
+            style="position: absolute; top: 159px; left: 66px; width: 206px; height: 42px"
             show="{{ downFlag===''&&!numFlag }}"
           >
             <text class="calbtnt9" for="{{ item in keys['t9'][2] }}" @click="onSelect(item)">
@@ -414,7 +414,7 @@
             </text>
           </div>
           <div
-            style="position: absolute; top: 35px; left: 95px; width: 294px; height: 60px"
+            style="position: absolute; top: 24px; left: 66px; width: 206px; height: 42px"
             show="{{ numFlag }}"
           >
             <text class="calbtnt9" @click="onSelect('7')">7</text>
@@ -422,7 +422,7 @@
             <text class="calbtnt9" @click="onSelect('9')">9</text>
           </div>
           <div
-            style="position: absolute; top: 99px; left: 95px; width: 294px; height: 60px"
+            style="position: absolute; top: 69px; left: 66px; width: 206px; height: 42px"
             show="{{ numFlag }}"
           >
             <text class="calbtnt9" @click="onSelect('4')">4</text>
@@ -430,7 +430,7 @@
             <text class="calbtnt9" @click="onSelect('6')">6</text>
           </div>
           <div
-            style="position: absolute; top: 163px; left: 95px; width: 294px; height: 60px"
+            style="position: absolute; top: 114px; left: 66px; width: 206px; height: 42px"
             show="{{ numFlag }}"
           >
             <text class="calbtnt9" @click="onSelect('1')">1</text>
@@ -438,7 +438,7 @@
             <text class="calbtnt9" @click="onSelect('3')">3</text>
           </div>
           <div
-            style="position: absolute; top: 227px; left: 95px; width: 294px; height: 60px"
+            style="position: absolute; top: 159px; left: 66px; width: 206px; height: 42px"
             show="{{ numFlag }}"
           >
             <text class="calbtnt9" @click="onSelect('，')">，</text>
@@ -447,18 +447,18 @@
           </div>
           <img
             src="./assets/t9/del.png"
-            style="position: absolute; top: 35px; left: 389px; width: 60px; height: 60px"
+            style="position: absolute; top: 24px; left: 272px; width: 42px; height: 42px"
             @click="onBtnClick('D')"
             show="{{ downFlag==='' }}"
           />
           <img
             src="./assets/t9/space.png"
-            style="position: absolute; top: 99px; left: 389px; width: 60px; height: 60px"
+            style="position: absolute; top: 69px; left: 272px; width: 42px; height: 42px"
             @click="onBtnClick('space')"
             show="{{ downFlag==='' && !numFlag }}"
           />
           <img
-            style="position: absolute; top: 204px; left: 78px"
+            style="position: absolute; top: 143px; left: 55px"
             src="./assets/full/up.png"
             @click="onBtnClick('down')"
             show="{{ downFlag==='down' }}"
@@ -999,6 +999,9 @@ export default {
     // 针对screenShape为rect的设备，会自动获取screenWidth并绑定到根div
     // 这样便能同时适配n67和o65甚至是后续设备，但实际效果可能受designWidth影响
     screenWidth: 192,
+    // 圆屏输入行已按 0.7 缩到 38px，内部滚动区必须同步缩小，否则文字溢出被裁
+    inputScrollH: 42,
+    inputScrollM: 6,
   },
   onInit() {
     this.keys = KEYS;
@@ -1010,6 +1013,10 @@ export default {
     // 模板依赖的数据显式声明在 private；未知设备形态沿用跑道屏基准。
     this.screentype = global.screenShape === "circle" || global.screenShape === "rect"
       ? global.screenShape : "pill-shaped";
+    if (this.screentype === "circle") {
+      this.inputScrollH = 30;
+      this.inputScrollM = 2;
+    }
     this._lastResetWord = "";
     // 调用方通过 global 传入初始文本与输入行标题（保持与调用页一致的 UI）
     this.context = global.__imeText || "";
@@ -1532,8 +1539,65 @@ export default {
 @media (min-width: 200) and (max-width: 235) and (shape: circle) {
   #full-keyboard {
     transform: scale(0.96);
-    transform-origin: 0 321px;
+    transform-origin: 0 225px;
     overflow: visible;
+  }
+}
+
+/* QQRT / Watch S5：本输入法的圆屏键盘原按 designWidth 480 设计，
+   QQRT 用 336，故圆屏分支内联尺寸已整体 ×0.7；这里同步覆盖共用按键类，
+   只在 circle 生效，rect（手环 10 Pro）与 pill-shaped 保持原样。 */
+@media (shape: circle) {
+  .input-line {
+    width: 179px;
+    height: 38px;
+  }
+  .input-text {
+    padding: 0 8px;
+  }
+  .item {
+    height: 36px;
+  }
+  .calbtn0 {
+    font-size: 20px;
+    height: 36px;
+    width: 36px;
+  }
+  .calbtn02 {
+    font-size: 22px;
+    height: 29px;
+  }
+  .calbtnfull {
+    font-size: 17px;
+    margin-right: 3px;
+    height: 36px;
+    width: 28px;
+    border-radius: 8px;
+    border: 2px solid rgba(255, 255, 255, 0.06);
+  }
+  .calbtnt9 {
+    font-size: 18px;
+    margin-right: 3px;
+    width: 66px;
+    height: 42px;
+    border: 2px solid rgba(255, 255, 255, 0.06);
+  }
+  .caltext {
+    line-height: 27px;
+    height: 32px;
+    font-size: 20px;
+    padding-left: 6px;
+  }
+  .list3 {
+    top: 27px;
+    left: 55px;
+    width: 227px;
+    height: 112px;
+    border-radius: 8px;
+  }
+  .item3 {
+    width: 227px;
+    height: 36px;
   }
 }
 </style>

@@ -199,18 +199,30 @@ export function request(method, path, params, body, cb) {
       finish(null, obj)
     },
     fail: function (data, code) {
-      finish({ code: 'NET', msg: '网络连接失败' + (code ? '(' + code + ')' : '') })
+      var c = Number(code) || 0
+      // 蜂窝 / eSIM 首次建链（PDP 激活、DNS 就绪）常常慢一拍，GET 自动重试一次。
+      // POST 绝不重试：可能已经到达服务端，重试会造成重复发消息。
+      if (method === 'GET' && retries < 1 && isRetryableNetCode(c)) {
+        retries++
+        try { setTimeout(fire, 1200) } catch (e) { finish({ code: 'NET', msg: netFailMsg(c) }) }
+        return
+      }
+      finish({ code: 'NET', msg: netFailMsg(c) })
     }
   }
   if (method === 'POST') {
     opts.data = JSON.stringify(body || {})
     opts.header = { 'Content-Type': 'application/json' }
   }
-  try {
-    fetch.fetch(opts)
-  } catch (e) {
-    finish({ code: 'NET', msg: '网络请求异常' })
+  var retries = 0
+  function fire() {
+    try {
+      fetch.fetch(opts)
+    } catch (e) {
+      finish({ code: 'NET', msg: '网络请求异常' })
+    }
   }
+  fire()
 }
 
 export function get(path, params, cb) { request('GET', path, params, null, cb) }
@@ -236,6 +248,120 @@ export function testHost(host, cb) {
       fail: function () { cb(new Error('连接失败')) }
     })
   } catch (e) { cb(new Error('连接失败')) }
+}
+
+/* ---------------- 设备 / 网络能力（S5 eSIM 适配） ---------------- */
+
+/**
+ * 把 Vela fetch 的错误码翻成人话。
+ * 60 = TLS 证书链校验失败（缺根证书）；6 = DNS；7 = 连不上；28 = 超时。
+ */
+/** 6=DNS、7=连不上、28=超时：蜂窝首次建链常见的可重试错误 */
+export function isRetryableNetCode(c) {
+  var n = Number(c) || 0
+  return n === 6 || n === 7 || n === 28 || n === 0
+}
+
+export function netFailMsg(code) {
+  var c = Number(code) || 0
+  if (c === 60 || c === 51) return '证书校验失败(60)：缺根证书，需 CA 补丁'
+  if (c === 6) return '域名解析失败(6)：蜂窝 DNS 未就绪或未给应用联网'
+  if (c === 7) return '连接失败(7)：Wi-Fi / eSIM 数据未通'
+  if (c === 28) return '请求超时(28)：蜂窝建链慢或网络不通'
+  if (c === 403) return '服务器拒绝(403)：分享链接要带 ?sharecode='
+  return '网络连接失败' + (c ? '(' + c + ')' : '')
+}
+
+/** 设备快照（app.ux 里 device.getInfo 的结果） */
+export function getDeviceSnapshot() {
+  var g = typeof global !== 'undefined' ? global : {}
+  var d = g.deviceInfo || {}
+  return {
+    model: d.model || '未知型号',
+    product: d.product || '',
+    brand: d.brand || '',
+    deviceType: d.deviceType || '',
+    osType: d.osType || '',
+    osVersionName: d.osVersionName || '',
+    platformVersionName: d.platformVersionName || '',
+    platformVersionCode: d.platformVersionCode || 0,
+    screenWidth: d.screenWidth || 0,
+    screenHeight: d.screenHeight || 0,
+    screenShape: d.screenShape || g.screenShape || 'rect',
+    isCircle: !!g.isCircle,
+    designH: g.designH || 480,
+    netHint: g.netHint || 'unknown'
+  }
+}
+
+/**
+ * 实测网络：不带登录态直接打 /api/health。
+ * cb({ ok, code, ms, msg, hint })
+ *   hint: native=可直连 / cert=缺证书 / net=无网络 / server=服务端异常
+ * S5（Wi-Fi 或 eSIM）应当直接 ok；手环 10 Pro 需手机代理 + TUN 模块。
+ */
+export function probeNetwork(cb) {
+  var host = String(auth.host || DEFAULT_HOST)
+  var qi = host.indexOf('?')
+  var base = qi >= 0 ? host.substring(0, qi) : host
+  var query = qi >= 0 ? host.substring(qi) : ''
+  var url = base + '/api/health' + query
+  var t0 = Date.now()
+  var done = false
+  var attempt = 0
+  var MAX = 3
+  var watchdog = null
+
+  function finish(o) {
+    if (done) return
+    done = true
+    if (watchdog) { try { clearTimeout(watchdog) } catch (e) {} }
+    o.ms = Date.now() - t0
+    o.attempts = attempt
+    cb && cb(o)
+  }
+
+  function fire() {
+    attempt++
+    try {
+      fetch.fetch({
+        url: url,
+        method: 'GET',
+        responseType: 'text',
+        success: function (resp) {
+          var code = Number(resp && resp.code) || 0
+          var obj = parseJson(resp && resp.data)
+          if (code >= 200 && code < 300 && obj && obj.ok !== false) {
+            finish({ ok: true, code: code, msg: '服务器可达', hint: 'native' })
+          } else {
+            finish({ ok: false, code: code, msg: '服务器返回 ' + code, hint: 'server' })
+          }
+        },
+        fail: function (data, code) {
+          var c = Number(code) || 0
+          // eSIM 蜂窝 PDP 激活 / DNS 就绪常常慢一拍，给 3 次机会
+          if (attempt < MAX && isRetryableNetCode(c)) {
+            try { setTimeout(fire, 1500); return } catch (e) {}
+          }
+          finish({
+            ok: false, code: c, msg: netFailMsg(c),
+            hint: (c === 60 || c === 51) ? 'cert' : 'net'
+          })
+        }
+      })
+    } catch (e) {
+      finish({ ok: false, code: 0, msg: '网络请求异常', hint: 'net' })
+    }
+  }
+
+  // Vela 的 fetch 没有 timeout 参数，自己加看门狗，避免蜂窝挂起时一直转圈
+  try {
+    watchdog = setTimeout(function () {
+      finish({ ok: false, code: 28, msg: netFailMsg(28) + '（无响应）', hint: 'net' })
+    }, 15000)
+  } catch (e) {}
+
+  fire()
 }
 
 /* ---------------- 通用工具 ---------------- */

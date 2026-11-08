@@ -1,0 +1,178 @@
+<template>
+  <div class="page" style="height:{{vh}}px">
+    <div class="main">
+      <div class="head">
+        <text class="h-back" @click="goBack">‹</text>
+        <text class="h-title">设备与网络</text>
+        <text class="h-right" @click="runTest">{{testing ? '测试中' : '重测'}}</text>
+      </div>
+
+      <list class="list" style="height:{{listH}}px" bounces="true">
+        <list-item type="row" class="row" for="{{rows}}" tid="k">
+          <text class="label">{{$item.k}}</text>
+          <text class="value">{{$item.v}}</text>
+        </list-item>
+      </list>
+
+      <div class="foot">
+        <text class="advice">{{advice}}</text>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+import {
+  getDeviceSnapshot, probeNetwork, getHost, back, toast
+} from '../common/api.js'
+
+export default {
+  private: {
+    vh: 480,
+    listH: 280,
+    rows: [],
+    advice: '点右上角「重测」检查网络。',
+    testing: false
+  },
+
+  onInit() {
+    const d = getDeviceSnapshot()
+    this.vh = (typeof global !== 'undefined' && global.designH) || 480
+    // head 56 + foot 104 固定；矮屏（S5 圆屏 designH=336）也不能把列表撑出屏幕
+    this.listH = Math.max(60, this.vh - 160)
+
+    const shapeCn = d.screenShape === 'circle' ? '圆形'
+      : (d.screenShape === 'pill-shaped' ? '胶囊' : '矩形')
+    const nativeCn = d.netHint === 'native' ? '支持 · 可直连'
+      : (d.netHint === 'proxy' ? '不支持 · 需代理' : '未知 · 以实测为准')
+    const host = String(getHost() || '').replace(/^https?:\/\//, '')
+
+    this.rows = [
+      { k: '型号', v: d.model || '未知' },
+      { k: '设备类型', v: d.deviceType || '未知' },
+      { k: '系统', v: (d.osType || 'Vela') + ' ' + (d.osVersionName || '') },
+      { k: '平台', v: (d.platformVersionName || '—') + ' / API ' + (d.platformVersionCode || '—') },
+      { k: '屏幕', v: (d.screenWidth || '?') + '×' + (d.screenHeight || '?') + ' ' + shapeCn },
+      { k: '布局', v: '336×' + d.designH + (d.isCircle ? ' · 圆屏留边' : '') },
+      { k: '原生联网', v: nativeCn },
+      { k: '网络实测', v: '未测试' },
+      { k: '服务器', v: host ? (host.length > 26 ? host.slice(0, 26) + '…' : host) : '未设置' }
+    ]
+
+    this.advice = d.netHint === 'native'
+      ? '这台设备原生支持 fetch，配 Wi-Fi 或 eSIM 就能脱离手机直连，不需要 TUN 模块。点「重测」验证。'
+      : (d.netHint === 'proxy'
+        ? '官方标注手环不提供 fetch，需要手机代理 + TUN 模块。点「重测」看当前是否已接通。'
+        : '点「重测」检查当前网络能否连到服务器。')
+  },
+
+  runTest() {
+    if (this.testing) return
+    this.testing = true
+    this.setRow('网络实测', '测试中…')
+    probeNetwork((r) => {
+      this.testing = false
+      this.setRow('网络实测', r.ok
+        ? ('可达 ' + r.ms + 'ms' + (r.attempts > 1 ? ' / 第' + r.attempts + '次' : ''))
+        : (r.msg + ' / 重试' + r.attempts + '次'))
+      if (r.ok) {
+        this.advice = '可直连：本机可用 Wi-Fi / eSIM 独立联网，QQRT 不需要 TUN 模块或 CA 补丁。'
+      } else if (r.hint === 'cert') {
+        this.advice = '证书校验失败：系统缺根证书。S5 正常不应出现；若出现需补 CA 包（见 MIBAND10PRO-fix）。'
+      } else if (r.hint === 'server') {
+        this.advice = '服务器返回异常：检查分享链接是否带 ?sharecode=，或稍后重试。'
+      } else {
+        this.advice = '连不上（重试 ' + r.attempts + ' 次）。Wi-Fi 可用、蜂窝不行时，通常是系统没给第三方应用开 eSIM 数据，应用侧改不了：去手表设置确认 eSIM 权限，或改用 Wi-Fi。'
+      }
+      toast(r.ok ? '网络正常' : '网络未通')
+    })
+  },
+
+  setRow(k, v) {
+    const next = []
+    for (let i = 0; i < this.rows.length; i++) {
+      next.push({ k: this.rows[i].k, v: this.rows[i].k === k ? v : this.rows[i].v })
+    }
+    this.rows = next
+  },
+
+  goBack() { back() }
+}
+</script>
+
+<style>
+.page {
+  width: 336px;
+  height: 480px;
+  background-color: #000000;
+  flex-direction: column;
+}
+.main {
+  width: 336px;
+  flex-direction: column;
+}
+.head {
+  width: 336px;
+  height: 56px;
+  flex-direction: row;
+  align-items: center;
+  padding-left: 12px;
+  padding-right: 12px;
+}
+.h-back {
+  width: 32px;
+  font-size: 30px;
+  color: #ffffff;
+}
+.h-title {
+  flex-grow: 1;
+  font-size: 22px;
+  color: #ffffff;
+  font-weight: bold;
+}
+.h-right {
+  width: 72px;
+  font-size: 17px;
+  color: #4da3ff;
+  text-align: right;
+}
+.list {
+  width: 336px;
+  flex-direction: column;
+}
+.row {
+  width: 336px;
+  height: 52px;
+  flex-direction: row;
+  align-items: center;
+  padding-left: 14px;
+  padding-right: 14px;
+  border-bottom-width: 1px;
+  border-bottom-color: #1c1c1e;
+}
+.label {
+  width: 108px;
+  font-size: 17px;
+  color: #9a9aa0;
+}
+.value {
+  flex-grow: 1;
+  font-size: 17px;
+  color: #ffffff;
+  text-align: right;
+}
+.foot {
+  width: 336px;
+  height: 104px;
+  padding-left: 14px;
+  padding-right: 14px;
+  padding-top: 8px;
+}
+.advice {
+  width: 308px;
+  font-size: 15px;
+  line-height: 22px;
+  color: #8fd0ff;
+}
+
+</style>

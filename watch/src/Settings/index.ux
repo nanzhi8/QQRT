@@ -1,10 +1,10 @@
 <template>
   <div class="page" style="height:{{vh}}px">
-    <div class="main">
+    <scroll class="main" scroll-y="true" style="height:{{vh}}px">
       <div class="head">
         <text class="h-back" @click="goBack">‹</text>
         <text class="h-title">设置</text>
-        <text class="h-right">v4.11.0</text>
+        <text class="h-right">v4.11.13</text>
       </div>
 
       <div class="card">
@@ -37,6 +37,11 @@
           <text class="label">重置同步进度</text>
           <text class="value">{{cursorText}}</text>
         </div>
+        <div class="row" @click="openDevice">
+          <text class="label">设备与网络</text>
+          <text class="value">{{netText}}</text>
+          <text class="arrow">›</text>
+        </div>
       </div>
 
       <div class="card">
@@ -45,9 +50,9 @@
         </div>
       </div>
 
-      <text class="about">QQRT · 小米手环 9 Pro 适配版</text>
-      <text class="about2">文字聊天 / 引用回复 / @ 群成员 / 撤回</text>
-    </div>
+      <text class="about">QQRT · 手环 10 Pro / Watch S5 适配版</text>
+      <text class="about2">文字聊天 / 群管理 / 撤回 / eSIM 直连</text>
+    </scroll>
 
 
   </div>
@@ -56,7 +61,8 @@
 <script>
 import {
   loadAuth, hasAuth, get, post, replace, go, back, toast, saveHost,
-  sget, sset, normHost, getHost, getAccount, clearLogin, isShortCode, resolveShortCode
+  sget, sset, normHost, getHost, getAccount, clearLogin, isShortCode, resolveShortCode,
+  getDeviceSnapshot
 } from '../common/api.js'
 
 export default {
@@ -67,11 +73,14 @@ export default {
     account: '未登录',
     botText: '—',
     pendingText: '',
-    cursorText: ''
+    cursorText: '',
+    netText: ''
   },
 
   onInit() {
     this.vh = (typeof global !== 'undefined' && global.designH) || 480
+    const hint = getDeviceSnapshot().netHint
+    this.netText = hint === 'native' ? '可直连' : (hint === 'proxy' ? '需代理' : '查看')
     loadAuth(() => {
       if (!hasAuth()) { replace('Login'); return }
       this.host = getHost()
@@ -141,6 +150,10 @@ export default {
 
   openRequests() {
     go('Requests')
+  },
+
+  openDevice() {
+    go('Device')
   },
 
   refreshNames() {
@@ -333,4 +346,5 @@ export default {
   color: #888888;
   margin-top: 4px;
 }
+
 </style>
