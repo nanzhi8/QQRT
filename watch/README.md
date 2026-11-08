@@ -195,6 +195,19 @@ npx aiot release            # 正式包 dist/*.release.rpk（用 sign/ 证书签
 
 ---
 
+
+## 5.2 合并社区 PR #1（4.12.1）
+
+`qihe114514/feature/keyboard-auto-login` 已合并。新增：
+
+- `src/components/InputMethod/`：新输入法组件，支持拼音**词组候选**、键盘懒创建（进页不再一次性建 200+ 节点）、敏感输入星号显示；`src/Ime/ime.ux` 变为薄封装。
+- 登录页可选「保存账号密码并自动登录」，凭据存在本机 `storage`；**切换服务器 / 退出登录 / 关闭开关时自动清除**。
+- `manifest.json` 增加 `system.file` 声明（词库读取需要）。
+
+> 该组件圆屏键盘同样按 `designWidth 480` 写死，合并时已对圆屏分支 229 处内联尺寸 ×0.7
+> 并补 `@media (shape: circle)` 共用按键样式，S5 上不会再次溢出。
+> PR 里「同步上游群管理」的提交基于旧版，合并时保留本仓库更新的群管理代码。
+
 ## 5.1 多设备适配：Xiaomi Watch S5 / eSIM（4.11.11+）
 
 Vela 官方 `fetch` 支持明细（2026-11 查证）：
