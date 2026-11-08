@@ -1,12 +1,12 @@
 <template>
   <div class="page" style="height:{{vh}}px">
-    <scroll class="main" scroll-y="true" style="height:{{vh}}px">
       <div class="head">
         <text class="h-back" @click="goBack">‹</text>
         <text class="h-title">设置</text>
-        <text class="h-right">v4.11.13</text>
+          <text class="h-right">v4.12.1</text>
       </div>
 
+    <scroll class="main" scroll-y="true" style="height:{{contentH}}px">
       <div class="card">
         <div class="row" @click="editHost">
           <text class="label">服务器</text>
@@ -61,7 +61,7 @@
 <script>
 import {
   loadAuth, hasAuth, get, post, replace, go, back, toast, saveHost,
-  sget, sset, normHost, getHost, getAccount, clearLogin, isShortCode, resolveShortCode,
+  sget, sset, normHost, getHost, getAccount, clearLogin, clearRememberedLogin, isShortCode, resolveShortCode,
   getDeviceSnapshot
 } from '../common/api.js'
 
@@ -74,11 +74,13 @@ export default {
     botText: '—',
     pendingText: '',
     cursorText: '',
-    netText: ''
+    netText: '',
+    contentH: 424
   },
 
   onInit() {
     this.vh = (typeof global !== 'undefined' && global.designH) || 480
+    this.contentH = Math.max(120, this.vh - 56)
     const hint = getDeviceSnapshot().netHint
     this.netText = hint === 'native' ? '可直连' : (hint === 'proxy' ? '需代理' : '查看')
     loadAuth(() => {
@@ -142,10 +144,23 @@ export default {
 
   applyHost(v) {
     const h = normHost(v)
-    this.host = h
-    this.hostDisp = String(h || '').replace(/^https?:\/\//, '')
-    saveHost(h, () => {})
-    toast('已保存，需重新登录')
+    const changed = this.host && this.host !== h
+    const save = () => {
+      this.host = h
+      this.hostDisp = String(h || '').replace(/^https?:\/\//, '')
+      saveHost(h, (err) => {
+        if (err) { toast(err.message); return }
+        toast('已保存，需重新登录')
+      })
+    }
+    if (changed) {
+      clearRememberedLogin((err) => {
+        if (err) { toast('旧服务器凭据未能清除'); return }
+        save()
+      })
+      return
+    }
+    save()
   },
 
   openRequests() {
@@ -173,8 +188,13 @@ export default {
   },
 
   logout() {
-    clearLogin()
-    replace('Login')
+    clearRememberedLogin((rememberErr) => {
+      if (rememberErr) { toast('清除已保存凭据失败'); return }
+      clearLogin((tokenErr) => {
+        if (tokenErr) { toast('清除登录状态失败'); return }
+        replace('Login')
+      })
+    })
   },
 
   goBack() {

@@ -1,8 +1,8 @@
 {
   "package": "com.qqrt.band",
   "name": "QQRT",
-  "versionName": "4.11.13",
-  "versionCode": 94,
+  "versionName": "4.12.1",
+  "versionCode": 95,
   "icon": "/common/icon.png",
   "minAPILevel": 1,
   "deviceTypeList": [
@@ -26,6 +26,9 @@
     },
     {
       "name": "system.vibrator"
+    },
+    {
+      "name": "system.file"
     }
   ],
   "config": {

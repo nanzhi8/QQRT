@@ -11,6 +11,8 @@ import router from '@system.router'
 const K_HOST = 'qq_host'
 const K_TOKEN = 'qq_token'
 const K_ACCT = 'qq_acct'
+const K_SAVED_LOGIN = 'qq_saved_login'
+const K_AUTO_LOGIN = 'qq_auto_login'
 const K_FONT = 'qq_font'
 const K_TRIM = 'qq_trim'
 
@@ -30,14 +32,21 @@ export function sget(key, cb) {
   } catch (e) { cb && cb('') }
 }
 
-export function sset(key, val) {
+export function sset(key, val, cb) {
   try {
-    storage.set({ key: key, value: String(val === undefined || val === null ? '' : val) })
-  } catch (e) {}
+    storage.set({
+      key: key,
+      value: String(val === undefined || val === null ? '' : val),
+      success: function () { cb && cb(null) },
+      fail: function () { cb && cb(new Error('本地存储写入失败')) }
+    })
+  } catch (e) { cb && cb(e) }
 }
 
-export function sdel(key) {
-  try { storage.delete({ key: key }) } catch (e) {}
+export function sdel(key, cb) {
+  try {
+    storage.delete({ key: key, success: function () { cb && cb(null) }, fail: function () { cb && cb(new Error('本地存储删除失败')) } })
+  } catch (e) { cb && cb(e) }
 }
 
 /* ---------------- 服务器地址 ---------------- */
@@ -104,20 +113,53 @@ export function saveHost(host, cb) {
   const h = normHost(host)
   if (!h) { cb && cb(new Error('地址无效')); return }
   auth.host = h
-  sset(K_HOST, h)
-  cb && cb(null)
+  sset(K_HOST, h, cb)
 }
 
-export function saveLogin(token, account) {
+export function saveLogin(token, account, cb) {
   auth.token = String(token || '')
   auth.account = String(account || '')
-  sset(K_TOKEN, auth.token)
-  sset(K_ACCT, auth.account)
+  sset(K_TOKEN, auth.token, (tokenErr) => {
+    if (tokenErr) { cb && cb(tokenErr); return }
+    sset(K_ACCT, auth.account, cb)
+  })
 }
 
-export function clearLogin() {
+export function saveRememberedLogin(host, account, password, cb) {
+  const value = JSON.stringify({ host: normHost(host), account: String(account || ''), password: String(password || '') })
+  sset(K_SAVED_LOGIN, value, (err) => {
+    if (err) { cb && cb(err); return }
+    sset(K_AUTO_LOGIN, '1', (enableErr) => {
+      if (!enableErr) { cb && cb(null); return }
+      sdel(K_SAVED_LOGIN, () => { cb && cb(enableErr) })
+    })
+  })
+}
+
+export function clearRememberedLogin(cb) {
+  sdel(K_SAVED_LOGIN, (err) => {
+    if (err) {
+      sset(K_AUTO_LOGIN, '0', () => { cb && cb(err) })
+      return
+    }
+    sset(K_AUTO_LOGIN, '0', cb)
+  })
+}
+
+export function loadRememberedLogin(cb) {
+  sget(K_AUTO_LOGIN, (enabled) => {
+    sget(K_SAVED_LOGIN, (raw) => {
+      if (enabled !== '1') { cb && cb({ enabled: false, host: '', account: '', password: '' }); return }
+      let saved = null
+      try { saved = raw ? JSON.parse(raw) : null } catch (e) {}
+      cb && cb({ enabled: true, host: normHost(saved && saved.host || ''), account: saved && saved.account || '', password: saved && saved.password || '' })
+    })
+  })
+}
+
+export function clearLogin(cb) {
   auth.token = ''
-  sset(K_TOKEN, '')
+  sset(K_TOKEN, '', cb)
 }
 
 export function getHost() { return auth.host }
