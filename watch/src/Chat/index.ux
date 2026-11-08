@@ -11,6 +11,9 @@
       <text class="h-btn" @click="refresh">刷新</text>
     </div>
 
+    <!-- 诊断行（临时）：显示页面生命周期/轮询/导航阶段，闪退时报最后显示的文字 -->
+    <text style="position:absolute;top:58px;left:0;width:336px;height:20px;font-size:13px;color:#66c0ff;text-align:center;background-color:rgba(0,0,0,0.75);">{{dbg}}</text>
+
     <!-- 引用条（浮在输入栏上方，不改变布局） -->
     <div class="reply" if="{{replyId}}">
       <text class="reply-t">回复 {{replySender}}：{{replyPreview}}</text>
@@ -224,6 +227,7 @@ export default {
 
   onShow() {
     this.active = true
+    this.dbg = 'show'
     const r = typeof global !== 'undefined' ? global.__imeResult : null
     if (r) {
       const purpose = (typeof global !== 'undefined' && global.__imeFor) || ''
@@ -357,15 +361,19 @@ export default {
   poll() {
     if (!this.cid) return
     this.polling = true
-    const useWait = this.lpMode === 'long' && (this.lastSeq > 0)
+    // 决定性二分实验（4.12.6）：聊天页临时禁用长轮询，退回纯短轮询。
+    // 若这样不崩 → 长轮询在 S 系列聊天页的问题坐实；若照旧崩 → 轮询排除。
+    const useWait = false
     const params = { conversationId: this.cid, after: this.lastSeq || 0, limit: 20, read: 1 }
     if (useWait) { params.wait = 1; params.waitMs = LP_HOLD_MS }
     const t0 = Date.now()
+    const self = this
     get('/api/watch/messages', params, (err, obj) => {
-      this.polling = false
-      // 页面已隐藏（去输入法页 / 返回首页）时，在途长轮询的响应直接丢弃：
+      self.polling = false
+      // 页面已隐藏（去输入法页 / 返回首页）时，在途响应直接丢弃：
       // 更新后台页的响应式数据会触发后台页重渲染，部分新 Vela 平台（S 系列）会崩。
-      if (!this.active) return
+      if (!self.active) return
+      self.dbg = 'poll' + (self._pollCount = (self._pollCount || 0) + 1)
       if (err) {
         if (err.code === 'AUTH') { replace('Login'); return }
         // 长轮询失败 → 回退短轮询，避免一直空转
@@ -624,6 +632,7 @@ export default {
 
   /* ---------- 输入 ---------- */
   openKeyboard() {
+    this.dbg = 'ime?'
     this.emojiOpen = false
     if (typeof global !== 'undefined') {
       global.__imeText = this.draft || ''
@@ -634,6 +643,7 @@ export default {
     // 崩溃发生在输入法页创建阶段；连 go-ime 都没有 = 崩在聊天页自身。
     try { toast('go-ime') } catch (e) {}
     go('Ime')
+    this.dbg = 'pushed'
   },
 
   openEmoji() {
