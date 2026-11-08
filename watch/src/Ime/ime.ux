@@ -26,6 +26,7 @@
 
 <script>
 import router from '@system.router'
+import { toast } from '../common/api.js'
 
 export default {
   private: {
@@ -39,17 +40,23 @@ export default {
   },
 
   onInit() {
-    this.context = global.__imeText || ''
-    this.sensitive = global.__imeSensitive === true
-    global.__imeSensitive = false
-    this.updateDisplay()
-    this.label = global.__imeLabel || ''
-    this.screentype = global.screenShape === 'circle' || global.screenShape === 'rect'
-      ? global.screenShape : 'pill-shaped'
-    if (this.screentype === 'circle') { this.inputScrollH = 30; this.inputScrollM = 2 }
-    if (global.deviceProfile) this._unsubscribeDevice = global.deviceProfile.subscribe(() => {
-      this.screentype = global.screenShape
-    })
+    // 诊断 + 韧性（4.12.4）：初始化任何一步抛异常都不允许闪退，
+    // 改为 toast 显示错误文字（用户可截图回报，精确定位）。
+    try {
+      this.context = global.__imeText || ''
+      this.sensitive = global.__imeSensitive === true
+      global.__imeSensitive = false
+      this.updateDisplay()
+      this.label = global.__imeLabel || ''
+      this.screentype = global.screenShape === 'circle' || global.screenShape === 'rect'
+        ? global.screenShape : 'pill-shaped'
+      if (this.screentype === 'circle') { this.inputScrollH = 30; this.inputScrollM = 2 }
+      if (global.deviceProfile) this._unsubscribeDevice = global.deviceProfile.subscribe(() => {
+        this.screentype = global.screenShape
+      })
+    } catch (e) {
+      try { toast('IME初始化异常: ' + ((e && e.message) || e)) } catch (e2) {}
+    }
   },
 
   onDestroy() {

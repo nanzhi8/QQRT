@@ -361,6 +361,9 @@ export default {
     const t0 = Date.now()
     get('/api/watch/messages', params, (err, obj) => {
       this.polling = false
+      // 页面已隐藏（去输入法页 / 返回首页）时，在途长轮询的响应直接丢弃：
+      // 更新后台页的响应式数据会触发后台页重渲染，部分新 Vela 平台（S 系列）会崩。
+      if (!this.active) return
       if (err) {
         if (err.code === 'AUTH') { replace('Login'); return }
         // 长轮询失败 → 回退短轮询，避免一直空转
@@ -1418,6 +1421,15 @@ export default {
   background-color: #333333;
   align-items: center;
   justify-content: center;
+}
+
+/* 圆屏（S 系列）安全区修复：底部输入栏原先贴满左右边缘，发送按钮
+   整体落在圆形裁切区外（点不到）。内收后按钮中心落在半径内可正常点按。 */
+@media (shape: circle) {
+  .bar {
+    padding-left: 50px;
+    padding-right: 50px;
+  }
 }
 
 
